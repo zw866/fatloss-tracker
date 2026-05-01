@@ -26,6 +26,7 @@ const defaultState = {
   bodyMeasurements: [], // [{date, waist, hip, chest, arm, thigh, bodyfat}]
   photos: [],           // [{date, dataUrl, note}]
   weightRange: 30,
+  exerciseRange: 30,
   onboarded: false,
 };
 
@@ -569,7 +570,115 @@ function deleteFood(id) {
 
 /* ============== EXERCISE tab ============== */
 
+function setExerciseRange(range, ev) {
+  state.exerciseRange = range;
+  document.querySelectorAll('.chart-tabs [data-exrange]').forEach(c => c.classList.remove('active'));
+  if (ev?.target) ev.target.classList.add('active');
+  saveState();
+  drawExerciseChart();
+}
+
+function drawExerciseChart() {
+  const container = document.getElementById('exercise-chart');
+  const meta = document.getElementById('exercise-chart-meta');
+  if (!container) return;
+
+  // Aggregate exercise kcal by date
+  const byDate = {};
+  state.exercises.forEach(e => {
+    if (!byDate[e.date]) byDate[e.date] = 0;
+    byDate[e.date] += e.kcal || 0;
+  });
+
+  let data = Object.entries(byDate)
+    .map(([date, kcal]) => ({ date, kcal }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  if (state.exerciseRange !== 'all') {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - state.exerciseRange);
+    const cutoffISO = cutoff.toISOString().slice(0, 10);
+    data = data.filter(d => d.date >= cutoffISO);
+  }
+
+  if (data.length === 0) {
+    container.innerHTML = '<div class="muted small" style="padding:60px 0;text-align:center">没有数据</div>';
+    meta.innerHTML = '';
+    return;
+  }
+
+  const W = container.clientWidth || 320;
+  const H = 200;
+  const pad = { l: 40, r: 12, t: 16, b: 22 };
+  const innerW = W - pad.l - pad.r;
+  const innerH = H - pad.t - pad.b;
+
+  const kcals = data.map(d => d.kcal);
+  const maxKcal = Math.max(...kcals, 1);
+  const yMax = Math.ceil(maxKcal / 100) * 100;
+
+  const barW = Math.max(2, innerW / data.length - 2);
+  const xStep = innerW / data.length;
+
+  // Y-axis labels
+  const yTicks = 4;
+  const yLabels = [];
+  for (let i = 0; i <= yTicks; i++) {
+    const v = Math.round(yMax * i / yTicks);
+    const y = pad.t + (1 - i / yTicks) * innerH;
+    yLabels.push(`<line x1="${pad.l}" y1="${y}" x2="${W - pad.r}" y2="${y}" stroke="#f1f5f9" stroke-width="1"/>
+      <text x="${pad.l - 6}" y="${y + 3}" font-size="10" fill="#9ca3af" text-anchor="end">${v}</text>`);
+  }
+
+  // Bars
+  const bars = data.map((d, i) => {
+    const x = pad.l + i * xStep + (xStep - barW) / 2;
+    const h = (d.kcal / yMax) * innerH;
+    const y = pad.t + innerH - h;
+    const isToday = d.date === todayISO();
+    return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}"
+      rx="2" fill="${isToday ? '#f97316' : '#fed7aa'}" opacity="${isToday ? '1' : '0.8'}"/>`;
+  });
+
+  // 7-day moving average line
+  const avgPoints = data.map((d, i) => {
+    const start = Math.max(0, i - 3);
+    const end = Math.min(data.length, i + 4);
+    const avg = data.slice(start, end).reduce((a, b) => a + b.kcal, 0) / (end - start);
+    const x = pad.l + i * xStep + xStep / 2;
+    const y = pad.t + (1 - avg / yMax) * innerH;
+    return { x, y };
+  });
+  const avgPath = avgPoints.map((p, i) => (i === 0 ? 'M' : 'L') + p.x.toFixed(1) + ',' + p.y.toFixed(1)).join(' ');
+
+  // X labels
+  const xLabels = [];
+  if (data.length === 1) {
+    xLabels.push(`<text x="${pad.l + xStep / 2}" y="${H - 4}" font-size="10" fill="#9ca3af" text-anchor="middle">${fmtDate(data[0].date)}</text>`);
+  } else {
+    xLabels.push(`<text x="${pad.l + xStep / 2}" y="${H - 4}" font-size="10" fill="#9ca3af" text-anchor="start">${fmtDate(data[0].date)}</text>`);
+    if (data.length > 2) {
+      const mi = Math.floor(data.length / 2);
+      xLabels.push(`<text x="${pad.l + mi * xStep + xStep / 2}" y="${H - 4}" font-size="10" fill="#9ca3af" text-anchor="middle">${fmtDate(data[mi].date)}</text>`);
+    }
+    xLabels.push(`<text x="${pad.l + (data.length - 1) * xStep + xStep / 2}" y="${H - 4}" font-size="10" fill="#9ca3af" text-anchor="end">${fmtDate(data[data.length - 1].date)}</text>`);
+  }
+
+  container.innerHTML = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
+    ${yLabels.join('')}
+    ${bars.join('')}
+    <path d="${avgPath}" fill="none" stroke="#f97316" stroke-width="2" stroke-linejoin="round" stroke-dasharray="4 2" opacity="0.9"/>
+    ${xLabels.join('')}
+  </svg>`;
+
+  const totalDays = data.length;
+  const avgKcal = Math.round(kcals.reduce((a, b) => a + b, 0) / totalDays);
+  const maxDay = data.reduce((a, b) => b.kcal > a.kcal ? b : a);
+  meta.innerHTML = `<span>${totalDays} 天 · 日均 ${avgKcal} kcal</span><span>最高 ${Math.round(maxDay.kcal)} kcal (${fmtDate(maxDay.date)})</span>`;
+}
+
 function renderExercise() {
+  drawExerciseChart();
   const list = document.getElementById('exercise-list');
   const today = todaysExercises();
   list.innerHTML = today.length === 0
@@ -1225,6 +1334,7 @@ window.finishOnboarding = finishOnboarding;
 window.addWeight = addWeight;
 window.deleteWeight = deleteWeight;
 window.setWeightRange = setWeightRange;
+window.setExerciseRange = setExerciseRange;
 window.addFood = addFood;
 window.deleteFood = deleteFood;
 window.addExercise = addExercise;

@@ -272,6 +272,17 @@
     </div>
 
     <div class="card">
+      <div class="card-title">消耗趋势</div>
+      <div class="chart-tabs">
+        <button class="chip active" data-exrange="14" onclick="setExerciseRange(14, event)">14天</button>
+        <button class="chip" data-exrange="30" onclick="setExerciseRange(30, event)">30天</button>
+        <button class="chip" data-exrange="all" onclick="setExerciseRange('all', event)">全部</button>
+      </div>
+      <div id="exercise-chart" class="chart"></div>
+      <div class="chart-meta" id="exercise-chart-meta"></div>
+    </div>
+
+    <div class="card">
       <div class="card-title">今日运动</div>
       <div id="exercise-list" class="list"></div>
       <div class="totals" id="exercise-totals"></div>
