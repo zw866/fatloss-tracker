@@ -621,10 +621,20 @@ async function pasteHealthData() {
       return;
     }
     const text = await navigator.clipboard.readText();
-    const parsed = JSON.parse(text);
+    const trimmed = text.trim();
+
+    // Accept plain number (e.g. "523.4" directly from Shortcut Sum)
+    const num = parseFloat(trimmed);
+    if (!isNaN(num) && trimmed === String(num) || /^\d+(\.\d+)?$/.test(trimmed)) {
+      importHealthData({ kcal: num, date: todayISO() });
+      return;
+    }
+
+    // Accept JSON format
+    const parsed = JSON.parse(trimmed);
     importHealthData(parsed);
   } catch (e) {
-    toast('剪贴板里不是有效的 JSON');
+    toast('剪贴板里不是有效数据');
     console.error(e);
   }
 }
