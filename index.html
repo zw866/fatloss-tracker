@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+  <meta name="theme-color" content="#10b981">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="减脂">
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icon-192.svg">
+  <link rel="icon" href="icon-192.svg">
+  <link rel="stylesheet" href="styles.css">
+  <title>减脂 Tracker</title>
+</head>
+<body>
+
+<!-- Onboarding overlay -->
+<div id="onboarding" class="onboarding hidden">
+  <div class="onboarding-card">
+    <h2>欢迎，开始你的减脂旅程</h2>
+    <p class="muted">填一次基础数据，之后就能直接开始记录。</p>
+
+    <div class="form-grid">
+      <label>性别
+        <select id="ob-sex">
+          <option value="male">男</option>
+          <option value="female">女</option>
+        </select>
+      </label>
+      <label>年龄
+        <input type="number" id="ob-age" inputmode="numeric" placeholder="25">
+      </label>
+      <label>身高 (cm)
+        <input type="number" id="ob-height" inputmode="decimal" placeholder="176">
+      </label>
+      <label>当前体重 (kg)
+        <input type="number" id="ob-weight" inputmode="decimal" step="0.1" placeholder="96">
+      </label>
+      <label>起始体重 (kg)
+        <input type="number" id="ob-start-weight" inputmode="decimal" step="0.1" placeholder="109">
+      </label>
+      <label>目标体重 (kg)
+        <input type="number" id="ob-goal-weight" inputmode="decimal" step="0.1" placeholder="80">
+      </label>
+      <label>目标日期
+        <input type="date" id="ob-goal-date">
+      </label>
+      <label>活动水平
+        <select id="ob-activity">
+          <option value="1.2">久坐 (×1.2)</option>
+          <option value="1.375">轻度 1-3次/周 (×1.375)</option>
+          <option value="1.55">中等 3-5次/周 (×1.55)</option>
+          <option value="1.725" selected>高强度 6-7次/周 (×1.725)</option>
+          <option value="1.9">极高强度 (×1.9)</option>
+        </select>
+      </label>
+    </div>
+
+    <button class="btn-primary block" onclick="finishOnboarding()">开始追踪</button>
+  </div>
+</div>
+
+<!-- Main app -->
+<main id="app">
+
+  <!-- TODAY TAB -->
+  <section class="tab" data-tab="today">
+    <header class="page-header">
+      <div>
+        <div class="muted small" id="today-date">今天</div>
+        <h1>今日</h1>
+      </div>
+      <button class="icon-btn" onclick="showTab('settings')" aria-label="设置">⚙</button>
+    </header>
+
+    <!-- Goal progress card -->
+    <div class="card goal-card">
+      <div class="goal-row">
+        <div>
+          <div class="muted small">距离目标</div>
+          <div class="big-number" id="goal-remaining">—</div>
+          <div class="muted small">kg 还需减</div>
+        </div>
+        <div class="goal-meta">
+          <div class="meta-row"><span class="muted">起始</span><span id="goal-start">—</span></div>
+          <div class="meta-row"><span class="muted">目标</span><span id="goal-target">—</span></div>
+          <div class="meta-row"><span class="muted">截止</span><span id="goal-date">—</span></div>
+        </div>
+      </div>
+      <div class="progress-bar">
+        <div class="progress-fill" id="goal-progress-fill"></div>
+      </div>
+      <div class="goal-row small">
+        <span class="muted" id="goal-progress-text">已完成 0%</span>
+        <span class="muted" id="goal-pace">—</span>
+      </div>
+    </div>
+
+    <!-- Quick stats grid -->
+    <div class="stats-grid">
+      <div class="card stat-card weight" onclick="showTab('weight')">
+        <div class="stat-icon">⚖</div>
+        <div class="stat-label">体重</div>
+        <div class="stat-value" id="stat-weight">—</div>
+        <div class="stat-delta" id="stat-weight-delta">—</div>
+      </div>
+      <div class="card stat-card calories" onclick="showTab('food')">
+        <div class="stat-icon">🍽</div>
+        <div class="stat-label">摄入</div>
+        <div class="stat-value" id="stat-calories">—</div>
+        <div class="stat-delta" id="stat-calories-target">目标 —</div>
+      </div>
+      <div class="card stat-card exercise" onclick="showTab('exercise')">
+        <div class="stat-icon">🔥</div>
+        <div class="stat-label">运动消耗</div>
+        <div class="stat-value" id="stat-exercise">—</div>
+        <div class="stat-delta" id="stat-exercise-meta">—</div>
+      </div>
+      <div class="card stat-card deficit" onclick="showTab('today')">
+        <div class="stat-icon">📉</div>
+        <div class="stat-label">今日缺口</div>
+        <div class="stat-value" id="stat-deficit">—</div>
+        <div class="stat-delta" id="stat-deficit-meta">TDEE —</div>
+      </div>
+    </div>
+
+    <!-- Macros today -->
+    <div class="card">
+      <div class="card-title">今日宏量</div>
+      <div class="macro-row">
+        <div class="macro-bar">
+          <div class="macro-label"><span>蛋白</span><span id="macro-p-text">0 / 0 g</span></div>
+          <div class="bar"><div class="fill protein" id="macro-p-fill"></div></div>
+        </div>
+        <div class="macro-bar">
+          <div class="macro-label"><span>碳水</span><span id="macro-c-text">0 / 0 g</span></div>
+          <div class="bar"><div class="fill carbs" id="macro-c-fill"></div></div>
+        </div>
+        <div class="macro-bar">
+          <div class="macro-label"><span>脂肪</span><span id="macro-f-text">0 / 0 g</span></div>
+          <div class="bar"><div class="fill fat" id="macro-f-fill"></div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Recommendation -->
+    <div class="card recommend-card">
+      <div class="card-title">🍽 还能吃啥</div>
+      <p class="muted small" id="remaining-budget">基于剩余宏量预算给你推荐 2-3 个吃法</p>
+      <button class="btn-secondary block" onclick="aiSuggestMeal()">让 AI 给我推荐</button>
+    </div>
+
+    <!-- Tip -->
+    <div class="card tip-card" id="tip-card">
+      <div class="card-title">今日小提示</div>
+      <p id="tip-text" class="muted">—</p>
+    </div>
+  </section>
+
+  <!-- WEIGHT TAB -->
+  <section class="tab hidden" data-tab="weight">
+    <header class="page-header">
+      <h1>体重</h1>
+    </header>
+
+    <div class="card">
+      <div class="card-title">添加今日体重</div>
+      <div class="inline-form">
+        <input type="number" id="weight-input" inputmode="decimal" step="0.1" placeholder="kg">
+        <button class="btn-primary" onclick="addWeight()">记录</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">趋势</div>
+      <div class="chart-tabs">
+        <button class="chip active" data-range="14" onclick="setWeightRange(14, event)">14天</button>
+        <button class="chip" data-range="30" onclick="setWeightRange(30, event)">30天</button>
+        <button class="chip" data-range="90" onclick="setWeightRange(90, event)">90天</button>
+        <button class="chip" data-range="all" onclick="setWeightRange('all', event)">全部</button>
+      </div>
+      <div id="weight-chart" class="chart"></div>
+      <div class="chart-meta" id="weight-chart-meta"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">历史记录</div>
+      <div id="weight-history" class="list"></div>
+    </div>
+  </section>
+
+  <!-- FOOD TAB -->
+  <section class="tab hidden" data-tab="food">
+    <header class="page-header">
+      <h1>饮食</h1>
+    </header>
+
+    <div class="card">
+      <div class="card-title">添加食物</div>
+      <div class="ai-row">
+        <button class="btn-ai" onclick="aiEstimateFood()">🤖 AI 估算</button>
+        <button class="btn-ai" onclick="aiPhotoFood()">📸 拍照识别</button>
+      </div>
+      <div class="form-grid two-col">
+        <label>名称
+          <input type="text" id="food-name" placeholder="鸡胸肉 200g">
+        </label>
+        <label>热量 (kcal)
+          <input type="number" id="food-kcal" inputmode="numeric" placeholder="330">
+        </label>
+        <label>蛋白 (g)
+          <input type="number" id="food-protein" inputmode="decimal" step="0.1" placeholder="60">
+        </label>
+        <label>碳水 (g)
+          <input type="number" id="food-carbs" inputmode="decimal" step="0.1" placeholder="0">
+        </label>
+        <label>脂肪 (g)
+          <input type="number" id="food-fat" inputmode="decimal" step="0.1" placeholder="7">
+        </label>
+        <label>餐次
+          <select id="food-meal">
+            <option value="breakfast">早餐</option>
+            <option value="lunch">午餐</option>
+            <option value="dinner">晚餐</option>
+            <option value="snack">加餐/零食</option>
+          </select>
+        </label>
+      </div>
+      <button class="btn-primary block" onclick="addFood()">添加</button>
+    </div>
+
+    <div class="card">
+      <div class="card-title">今日记录</div>
+      <div id="food-list" class="list"></div>
+      <div class="totals" id="food-totals"></div>
+    </div>
+  </section>
+
+  <!-- EXERCISE TAB -->
+  <section class="tab hidden" data-tab="exercise">
+    <header class="page-header">
+      <h1>运动</h1>
+    </header>
+
+    <div class="card import-card">
+      <div class="card-title">从 Apple Health 导入</div>
+      <p class="muted small">用 iOS 快捷指令把今天的活动能量发到剪贴板，然后点下面的按钮粘贴。</p>
+      <div class="inline-form">
+        <button class="btn-secondary" onclick="pasteHealthData()">📋 粘贴 Health 数据</button>
+        <button class="btn-link" onclick="showTab('settings')">设置教程</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">手动添加</div>
+      <div class="form-grid two-col">
+        <label>类型
+          <input type="text" id="ex-type" placeholder="跑步 / 力量 / HIIT">
+        </label>
+        <label>时长 (分钟)
+          <input type="number" id="ex-duration" inputmode="numeric" placeholder="45">
+        </label>
+        <label>消耗 (kcal)
+          <input type="number" id="ex-kcal" inputmode="numeric" placeholder="400">
+        </label>
+        <label>备注
+          <input type="text" id="ex-note" placeholder="可选">
+        </label>
+      </div>
+      <button class="btn-primary block" onclick="addExercise()">添加</button>
+    </div>
+
+    <div class="card">
+      <div class="card-title">今日运动</div>
+      <div id="exercise-list" class="list"></div>
+      <div class="totals" id="exercise-totals"></div>
+    </div>
+  </section>
+
+  <!-- BODY TAB -->
+  <section class="tab hidden" data-tab="body">
+    <header class="page-header">
+      <h1>身材</h1>
+    </header>
+
+    <div class="card">
+      <div class="card-title">体围记录</div>
+      <div class="form-grid two-col">
+        <label>腰围 (cm)
+          <input type="number" id="body-waist" inputmode="decimal" step="0.1">
+        </label>
+        <label>臀围 (cm)
+          <input type="number" id="body-hip" inputmode="decimal" step="0.1">
+        </label>
+        <label>胸围 (cm)
+          <input type="number" id="body-chest" inputmode="decimal" step="0.1">
+        </label>
+        <label>大臂 (cm)
+          <input type="number" id="body-arm" inputmode="decimal" step="0.1">
+        </label>
+        <label>大腿 (cm)
+          <input type="number" id="body-thigh" inputmode="decimal" step="0.1">
+        </label>
+        <label>体脂率 (%)
+          <input type="number" id="body-bodyfat" inputmode="decimal" step="0.1">
+        </label>
+      </div>
+      <button class="btn-primary block" onclick="addBody()">保存今日测量</button>
+    </div>
+
+    <div class="card">
+      <div class="card-title">进度照片</div>
+      <input type="file" id="photo-input" accept="image/*" capture="environment" onchange="addPhoto(event)" hidden>
+      <button class="btn-secondary block" onclick="document.getElementById('photo-input').click()">📸 拍照 / 选取照片</button>
+      <div id="photo-grid" class="photo-grid"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">体围历史</div>
+      <div id="body-history" class="list"></div>
+    </div>
+  </section>
+
+  <!-- SETTINGS / MORE TAB -->
+  <section class="tab hidden" data-tab="settings">
+    <header class="page-header">
+      <h1>更多</h1>
+    </header>
+
+    <div class="card">
+      <div class="card-title">个人数据</div>
+      <div class="form-grid two-col">
+        <label>性别
+          <select id="set-sex">
+            <option value="male">男</option>
+            <option value="female">女</option>
+          </select>
+        </label>
+        <label>年龄
+          <input type="number" id="set-age" inputmode="numeric">
+        </label>
+        <label>身高 (cm)
+          <input type="number" id="set-height" inputmode="decimal">
+        </label>
+        <label>活动水平
+          <select id="set-activity">
+            <option value="1.2">久坐 (×1.2)</option>
+            <option value="1.375">轻度 (×1.375)</option>
+            <option value="1.55">中等 (×1.55)</option>
+            <option value="1.725">高强度 (×1.725)</option>
+            <option value="1.9">极高 (×1.9)</option>
+          </select>
+        </label>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">目标</div>
+      <div class="form-grid two-col">
+        <label>起始体重 (kg)
+          <input type="number" id="set-start" inputmode="decimal" step="0.1">
+        </label>
+        <label>目标体重 (kg)
+          <input type="number" id="set-goal" inputmode="decimal" step="0.1">
+        </label>
+        <label>目标日期
+          <input type="date" id="set-goal-date">
+        </label>
+        <label>每日热量目标 (kcal)
+          <input type="number" id="set-kcal-target" inputmode="numeric">
+        </label>
+      </div>
+      <button class="btn-link block" onclick="recalcCalorieTarget()">↻ 按当前体重重算 TDEE</button>
+    </div>
+
+    <div class="card">
+      <div class="card-title">宏量目标 (g/天)</div>
+      <div class="form-grid three-col">
+        <label>蛋白
+          <input type="number" id="set-p-target" inputmode="numeric">
+        </label>
+        <label>碳水
+          <input type="number" id="set-c-target" inputmode="numeric">
+        </label>
+        <label>脂肪
+          <input type="number" id="set-f-target" inputmode="numeric">
+        </label>
+      </div>
+      <button class="btn-link block" onclick="recalcMacroTargets()">↻ 按推荐比例自动算（蛋白2g/kg）</button>
+    </div>
+
+    <button class="btn-primary block" onclick="saveSettings()">保存设置</button>
+
+    <div class="card">
+      <div class="card-title">🤖 AI 助手 (OpenAI)</div>
+      <label class="form-label">API Key
+        <input type="password" id="set-api-key" placeholder="sk-..." autocomplete="off">
+      </label>
+      <label class="form-label" style="margin-top:10px">模型
+        <select id="set-api-model">
+          <option value="gpt-4o-mini">gpt-4o-mini（推荐：便宜+视觉）</option>
+          <option value="gpt-4o">gpt-4o（更准但贵 10 倍）</option>
+        </select>
+      </label>
+      <button class="btn-primary block" onclick="saveApiKey()">保存 API 设置</button>
+      <p class="muted small" style="margin-top:8px">Key 只存在你的浏览器本地，不会发到任何服务器（除了 OpenAI）。</p>
+    </div>
+
+    <div class="card setup-card">
+      <div class="card-title">📲 Apple Health 同步教程</div>
+      <p class="muted small">用 iOS 快捷指令把每天的活动能量自动复制到剪贴板，然后在「运动」页一键粘贴。</p>
+      <ol class="setup-list">
+        <li>打开 iOS「快捷指令」App，点右上角 +</li>
+        <li>添加动作「获取健康样本」→ 类型选「活动能量」→ 范围「今天」</li>
+        <li>添加动作「计算统计」→ 总和</li>
+        <li>添加动作「文本」，内容写：<code>{"kcal":[输入计算结果],"date":"[当前日期-ISO 8601]"}</code></li>
+        <li>添加动作「拷贝到剪贴板」</li>
+        <li>命名为「同步活动能量」，加到主屏幕</li>
+        <li>每天点一下 Shortcut，再回 PWA 点「📋 粘贴 Health 数据」</li>
+      </ol>
+      <p class="muted small">想自动每天跑？在快捷指令里设「自动化」→ 时间触发（比如每天 23:00）→ 运行此 Shortcut。</p>
+    </div>
+
+    <div class="card">
+      <div class="card-title">数据</div>
+      <button class="btn-secondary block" onclick="document.getElementById('health-import-file').click()">📲 导入 Apple Health JSON 文件</button>
+      <input type="file" id="health-import-file" accept="application/json" onchange="importHealthFile(event)" hidden>
+      <div class="muted small" style="margin:6px 4px 12px">把手机 Claude 导出的 30 天 Health JSON 一次性灌进来。</div>
+      <div class="button-row">
+        <button class="btn-secondary" onclick="exportData()">导出备份</button>
+        <button class="btn-secondary" onclick="document.getElementById('import-file').click()">导入备份</button>
+        <input type="file" id="import-file" accept="application/json" onchange="importData(event)" hidden>
+      </div>
+      <button class="btn-danger block" onclick="resetAll()">重置所有数据</button>
+    </div>
+
+    <div class="footer-text muted small">
+      数据全部保存在你的浏览器本地，不会上传任何服务器。<br>
+      建议偶尔点「导出 JSON」备份。
+    </div>
+  </section>
+
+</main>
+
+<!-- Bottom navigation -->
+<nav class="bottom-nav" id="bottom-nav">
+  <button class="nav-item active" onclick="showTab('today')" data-nav="today">
+    <span class="nav-icon">●</span>
+    <span class="nav-label">今日</span>
+  </button>
+  <button class="nav-item" onclick="showTab('weight')" data-nav="weight">
+    <span class="nav-icon">⚖</span>
+    <span class="nav-label">体重</span>
+  </button>
+  <button class="nav-item" onclick="showTab('food')" data-nav="food">
+    <span class="nav-icon">🍽</span>
+    <span class="nav-label">饮食</span>
+  </button>
+  <button class="nav-item" onclick="showTab('exercise')" data-nav="exercise">
+    <span class="nav-icon">🔥</span>
+    <span class="nav-label">运动</span>
+  </button>
+  <button class="nav-item" onclick="showTab('body')" data-nav="body">
+    <span class="nav-icon">📏</span>
+    <span class="nav-label">身材</span>
+  </button>
+</nav>
+
+<!-- AI Suggestion Modal -->
+<div id="ai-modal" class="modal hidden">
+  <div class="modal-card">
+    <div class="modal-header">
+      <h3 id="ai-modal-title">AI 推荐</h3>
+      <button class="modal-close" onclick="closeAiModal()">×</button>
+    </div>
+    <div class="modal-context" id="ai-modal-context"></div>
+    <div class="modal-body" id="ai-modal-body">
+      <div class="modal-loading">正在生成…</div>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div id="toast" class="toast hidden"></div>
+
+<script src="app.js"></script>
+</body>
+</html>

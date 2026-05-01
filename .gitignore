@@ -1,0 +1,11 @@
+# 个人健康数据 - 不推送
+health_30d.json
+*.json.bak
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 编辑器
+.vscode/
+*.swp
