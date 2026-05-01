@@ -1153,6 +1153,56 @@ async function callOpenAI({ messages, json = false, model }) {
   return data.choices?.[0]?.message?.content || null;
 }
 
+function voiceFoodInput() {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) {
+    toast('当前浏览器不支持语音输入，请用 Safari');
+    return;
+  }
+
+  const btn = document.getElementById('btn-voice');
+  const isListening = btn.dataset.listening === '1';
+
+  if (isListening) {
+    btn._recognition?.stop();
+    return;
+  }
+
+  const recognition = new SpeechRecognition();
+  recognition.lang = 'zh-CN';
+  recognition.continuous = false;
+  recognition.interimResults = false;
+  recognition.maxAlternatives = 1;
+  btn._recognition = recognition;
+
+  recognition.onstart = () => {
+    btn.dataset.listening = '1';
+    btn.textContent = '⏹ 停止';
+    btn.style.background = '#ef4444';
+    toast('正在听，说你吃了什么…', 15000);
+  };
+
+  recognition.onresult = async (e) => {
+    const text = e.results[0][0].transcript;
+    document.getElementById('food-name').value = text;
+    toast(`识别到：${text}`, 2000);
+    await aiEstimateFood();
+  };
+
+  recognition.onerror = (e) => {
+    const msg = { 'not-allowed': '麦克风权限被拒绝', 'no-speech': '没有检测到声音', 'network': '网络错误' };
+    toast(msg[e.error] || `语音识别出错：${e.error}`);
+  };
+
+  recognition.onend = () => {
+    btn.dataset.listening = '0';
+    btn.textContent = '🎤 语音';
+    btn.style.background = '';
+  };
+
+  recognition.start();
+}
+
 async function aiEstimateFood() {
   const name = document.getElementById('food-name').value.trim();
   if (!name) { toast('先填食物名称和分量'); return; }
@@ -1400,6 +1450,7 @@ window.importData = importData;
 window.importHealthFile = importHealthFile;
 window.resetAll = resetAll;
 window.saveApiKey = saveApiKey;
+window.voiceFoodInput = voiceFoodInput;
 window.aiEstimateFood = aiEstimateFood;
 window.aiPhotoFood = aiPhotoFood;
 window.aiSuggestMeal = aiSuggestMeal;
