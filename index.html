@@ -144,11 +144,25 @@
       </div>
     </div>
 
+    <!-- Meal time prompt (shown during meal hours if meal not logged) -->
+    <div id="meal-prompt-card" class="card meal-prompt hidden">
+      <div class="meal-prompt-body">
+        <span class="meal-prompt-icon">🍽</span>
+        <div class="meal-prompt-info">
+          <div class="meal-prompt-text" id="meal-prompt-text"></div>
+        </div>
+        <div class="meal-prompt-actions">
+          <button class="btn-primary meal-prompt-btn" onclick="goToRecommend()">看推荐</button>
+          <button class="icon-btn meal-prompt-close" onclick="dismissMealPrompt()">×</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Recommendation -->
     <div class="card recommend-card">
-      <div class="card-title">🍽 还能吃啥</div>
-      <p class="muted small" id="remaining-budget">基于剩余宏量预算给你推荐 2-3 个吃法</p>
-      <button class="btn-secondary block" onclick="aiSuggestMeal()">让 AI 给我推荐</button>
+      <div class="card-title">✨ AI 推荐吃什么</div>
+      <p class="muted small" id="remaining-budget">根据宏量缺口和饮食偏好个性化推荐</p>
+      <button class="btn-secondary block" onclick="showTab('recommend')">查看 AI 推荐 →</button>
     </div>
 
     <!-- Tip -->
@@ -338,6 +352,57 @@
     </div>
   </section>
 
+  <!-- RECOMMEND TAB -->
+  <section class="tab hidden" data-tab="recommend">
+    <header class="page-header">
+      <h1>AI 推荐</h1>
+    </header>
+
+    <div class="card">
+      <div class="card-title">今日宏量缺口</div>
+      <div id="rec-gaps"></div>
+      <div class="muted small" id="rec-kcal" style="margin-top:10px"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">饮食偏好</div>
+      <div id="pref-tags" class="pref-chips"></div>
+      <label class="form-label" style="margin-top:12px">
+        不喜欢 / 过敏
+        <input type="text" id="pref-disliked" placeholder="如：香菜、花生、辣椒" style="margin-top:6px">
+      </label>
+      <div id="pref-frequent" class="muted small" style="margin-top:8px"></div>
+      <button class="btn-link block" onclick="savePreferences()">保存偏好</button>
+    </div>
+
+    <div class="card">
+      <div class="card-title">选择推荐场景</div>
+      <div class="scenario-grid">
+        <button class="scenario-btn" onclick="aiRecommend('home')">
+          <span class="scenario-icon">🍳</span>
+          <span>自己做饭</span>
+        </button>
+        <button class="scenario-btn" onclick="aiRecommend('delivery')">
+          <span class="scenario-icon">🛵</span>
+          <span>点外卖</span>
+        </button>
+        <button class="scenario-btn" onclick="aiRecommend('convenience')">
+          <span class="scenario-icon">🏪</span>
+          <span>便利店</span>
+        </button>
+        <button class="scenario-btn" onclick="aiRecommend('snack')">
+          <span class="scenario-icon">🍎</span>
+          <span>加餐零食</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">推荐结果</div>
+      <div id="rec-result" class="muted small">↑ 选择上方场景，AI 将根据宏量缺口和饮食偏好生成推荐</div>
+    </div>
+  </section>
+
   <!-- SETTINGS / MORE TAB -->
   <section class="tab hidden" data-tab="settings">
     <header class="page-header">
@@ -480,6 +545,10 @@
   <button class="nav-item" onclick="showTab('body')" data-nav="body">
     <span class="nav-icon">📏</span>
     <span class="nav-label">身材</span>
+  </button>
+  <button class="nav-item" onclick="showTab('recommend')" data-nav="recommend">
+    <span class="nav-icon">✨</span>
+    <span class="nav-label">推荐</span>
   </button>
 </nav>
 

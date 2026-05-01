@@ -359,6 +359,8 @@ select {
   font-weight: 500;
 }
 .nav-item.active { color: #10b981; }
+.bottom-nav .nav-item:nth-child(6) ~ .nav-item .nav-label,
+.bottom-nav:has(.nav-item:nth-child(6)) .nav-label { font-size: 10px; }
 .nav-icon { font-size: 18px; }
 
 /* ============== Onboarding ============== */
@@ -490,6 +492,96 @@ select {
   text-align: center;
   color: #6b7280;
   padding: 30px 0;
+}
+
+/* ============== Meal prompt ============== */
+.meal-prompt {
+  background: linear-gradient(135deg, #f0fdf4, #ecfdf5);
+  border: 1px solid rgba(16,185,129,0.18);
+  padding: 12px 16px;
+}
+.meal-prompt-body {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.meal-prompt-icon { font-size: 20px; flex-shrink: 0; }
+.meal-prompt-info { flex: 1; min-width: 0; }
+.meal-prompt-text { font-size: 13px; font-weight: 500; line-height: 1.4; }
+.meal-prompt-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.meal-prompt-btn {
+  height: 34px !important;
+  font-size: 13px !important;
+  padding: 0 12px !important;
+  border-radius: 9px !important;
+}
+.meal-prompt-close {
+  width: 28px !important;
+  height: 28px !important;
+  font-size: 16px !important;
+  background: rgba(16,185,129,0.12) !important;
+}
+
+/* ============== Scenario grid ============== */
+.scenario-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.scenario-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 18px 8px;
+  background: #f8fafc;
+  border-radius: 14px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #1a1f2e;
+  transition: background 0.15s, transform 0.1s;
+}
+.scenario-btn:active { background: #e2e8f0; transform: scale(0.97); }
+.scenario-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+.scenario-btn.loading { opacity: 0.6; }
+.scenario-icon { font-size: 30px; }
+
+/* ============== Preference chips ============== */
+.pref-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.pref-chip {
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: #6b7280;
+  font-size: 13px;
+  font-weight: 500;
+  transition: background 0.15s;
+}
+.pref-chip.active { background: #10b981; color: #fff; }
+
+/* ============== Recommend gap bars ============== */
+.gap-row { margin-bottom: 12px; }
+.gap-row:last-child { margin-bottom: 0; }
+.gap-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  font-weight: 500;
+  margin-bottom: 6px;
+}
+
+/* ============== Recommend result ============== */
+.rec-text { font-size: 14px; line-height: 1.75; }
+.rec-heading {
+  font-weight: 700;
+  font-size: 15px;
+  margin: 12px 0 4px;
+  color: #1a1f2e;
 }
 
 /* ============== Food date nav ============== */

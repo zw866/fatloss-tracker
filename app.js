@@ -28,6 +28,11 @@ const defaultState = {
   weightRange: 30,
   exerciseRange: 30,
   onboarded: false,
+  aiPrefs: {
+    tags: [],
+    disliked: '',
+  },
+  mealPromptDismissed: null,
 };
 
 let state = loadState();
@@ -39,7 +44,9 @@ function loadState() {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return structuredClone(defaultState);
     const parsed = JSON.parse(raw);
-    return Object.assign(structuredClone(defaultState), parsed);
+    const merged = Object.assign(structuredClone(defaultState), parsed);
+    merged.aiPrefs = Object.assign(structuredClone(defaultState.aiPrefs), parsed.aiPrefs || {});
+    return merged;
   } catch (e) {
     console.error('loadState failed', e);
     return structuredClone(defaultState);
@@ -171,6 +178,7 @@ function renderForTab(name) {
     case 'exercise': renderExercise(); break;
     case 'body': renderBody(); break;
     case 'settings': renderSettings(); break;
+    case 'recommend': renderRecommend(); break;
   }
 }
 
@@ -308,6 +316,9 @@ function renderToday() {
 
   // Tip
   document.getElementById('tip-text').textContent = generateTip(cw, fSum, exKcal);
+
+  // Meal time prompt
+  checkMealPrompt();
 }
 
 function yesterdaysWeight() {
@@ -1424,6 +1435,222 @@ function closeAiModal() {
   document.getElementById('ai-modal').classList.add('hidden');
 }
 
+/* ============== AI RECOMMEND tab ============== */
+
+const PRESET_TAGS = ['素食', '无辣', '无海鲜', '无麸质', '不吃牛肉', '无乳制品'];
+let aiRecommending = false;
+
+function getMealTime() {
+  const t = new Date().getHours() * 60 + new Date().getMinutes();
+  if (t >= 360 && t <= 570)  return 'breakfast';  // 6:00–9:30
+  if (t >= 690 && t <= 810)  return 'lunch';       // 11:30–13:30
+  if (t >= 1050 && t <= 1170) return 'dinner';     // 17:30–19:30
+  return null;
+}
+
+function checkMealPrompt() {
+  const card = document.getElementById('meal-prompt-card');
+  if (!card) return;
+  if (state.mealPromptDismissed === todayISO()) { card.classList.add('hidden'); return; }
+  const meal = getMealTime();
+  if (!meal) { card.classList.add('hidden'); return; }
+  const alreadyLogged = state.foods.some(f => f.date === todayISO() && f.meal === meal);
+  if (alreadyLogged) { card.classList.add('hidden'); return; }
+
+  const fSum = sumFoods(todaysFoods());
+  const g = state.goal;
+  const proteinGap = Math.max(0, Math.round((g.proteinTarget || 0) - fSum.p));
+  const kcalGap = Math.max(0, Math.round((g.kcalTarget || 0) - fSum.kcal));
+  const labels = { breakfast: '早餐', lunch: '午餐', dinner: '晚餐' };
+  let text = `${labels[meal]}时间 · 今日还剩 ${kcalGap} kcal`;
+  if (proteinGap > 0) text += `，蛋白缺口 ${proteinGap} g`;
+  document.getElementById('meal-prompt-text').textContent = text;
+  card.classList.remove('hidden');
+}
+
+function dismissMealPrompt() {
+  state.mealPromptDismissed = todayISO();
+  saveState();
+  document.getElementById('meal-prompt-card').classList.add('hidden');
+}
+
+function goToRecommend() { showTab('recommend'); }
+
+function getFrequentFoods(n = 6) {
+  const count = {};
+  state.foods.forEach(f => {
+    const key = f.name.trim().slice(0, 12);
+    count[key] = (count[key] || 0) + 1;
+  });
+  return Object.entries(count)
+    .filter(([, c]) => c >= 2)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, n)
+    .map(([name]) => name);
+}
+
+function buildRecommendCtx() {
+  const fSum = sumFoods(todaysFoods());
+  const exKcal = sumExercises(todaysExercises());
+  const g = state.goal;
+  const gap = {
+    kcal:    Math.max(0, Math.round((g.kcalTarget || 2000) - fSum.kcal + exKcal)),
+    protein: Math.max(0, Math.round((g.proteinTarget || 0) - fSum.p)),
+    carbs:   Math.max(0, Math.round((g.carbsTarget || 0) - fSum.c)),
+    fat:     Math.max(0, Math.round((g.fatTarget || 0) - fSum.f)),
+  };
+  const prefs = state.aiPrefs || {};
+  const tags = (prefs.tags || []).join('、') || '无特殊限制';
+  const disliked = (prefs.disliked || '').trim().slice(0, 200) || '无';
+  const frequent = getFrequentFoods(6).join('、') || '暂无记录';
+  return { fSum, gap, tags, disliked, frequent };
+}
+
+function renderRecommend() {
+  const { fSum, gap } = buildRecommendCtx();
+  const g = state.goal;
+
+  const gapsEl = document.getElementById('rec-gaps');
+  if (gapsEl) {
+    const items = [
+      { label: '蛋白质', eaten: fSum.p, target: g.proteinTarget, color: '#3b82f6' },
+      { label: '碳水',   eaten: fSum.c, target: g.carbsTarget,   color: '#f59e0b' },
+      { label: '脂肪',   eaten: fSum.f, target: g.fatTarget,     color: '#ef4444' },
+    ];
+    gapsEl.innerHTML = items.map(({ label, eaten, target, color }) => {
+      const pct = target ? Math.min(100, (eaten / target) * 100) : 0;
+      const remaining = target ? Math.max(0, target - eaten) : 0;
+      return `<div class="gap-row">
+        <div class="gap-label">
+          <span>${label}</span>
+          <span class="muted">${remaining > 0 ? `还差 ${Math.round(remaining)} g` : '✓ 已满足'}</span>
+        </div>
+        <div class="bar"><div class="fill" style="width:${pct.toFixed(1)}%;background:${color}"></div></div>
+      </div>`;
+    }).join('');
+  }
+
+  const kcalEl = document.getElementById('rec-kcal');
+  if (kcalEl) kcalEl.textContent = `热量剩余（含运动消耗）：${gap.kcal} kcal`;
+
+  renderPrefChips();
+
+  const freqEl = document.getElementById('pref-frequent');
+  if (freqEl) {
+    const freq = getFrequentFoods(5);
+    freqEl.textContent = freq.length ? `常吃食物（AI 推荐时参考）：${freq.join('、')}` : '';
+  }
+}
+
+function renderPrefChips() {
+  const el = document.getElementById('pref-tags');
+  if (!el) return;
+  const active = state.aiPrefs?.tags || [];
+  el.innerHTML = PRESET_TAGS.map(tag =>
+    `<button class="pref-chip ${active.includes(tag) ? 'active' : ''}" onclick="toggleTag('${tag}')">${tag}</button>`
+  ).join('');
+  const dislikedEl = document.getElementById('pref-disliked');
+  if (dislikedEl) dislikedEl.value = state.aiPrefs?.disliked || '';
+}
+
+function toggleTag(tag) {
+  if (!state.aiPrefs) state.aiPrefs = { tags: [], disliked: '' };
+  if (!state.aiPrefs.tags) state.aiPrefs.tags = [];
+  const idx = state.aiPrefs.tags.indexOf(tag);
+  if (idx >= 0) state.aiPrefs.tags.splice(idx, 1);
+  else state.aiPrefs.tags.push(tag);
+  saveState();
+  renderPrefChips();
+}
+
+function savePreferences() {
+  if (!state.aiPrefs) state.aiPrefs = { tags: [], disliked: '' };
+  state.aiPrefs.disliked = (document.getElementById('pref-disliked')?.value || '').trim().slice(0, 200);
+  saveState();
+  toast('偏好已保存 ✓');
+}
+
+async function aiRecommend(scenario) {
+  if (aiRecommending) return;
+  aiRecommending = true;
+
+  const resultEl = document.getElementById('rec-result');
+  const btns = document.querySelectorAll('.scenario-btn');
+  const scenarioLabels = { home: '自己做饭', delivery: '点外卖', convenience: '便利店', snack: '加餐零食' };
+
+  resultEl.innerHTML = `<div class="modal-loading">正在生成「${scenarioLabels[scenario]}」推荐…</div>`;
+  btns.forEach(b => { b.disabled = true; b.classList.add('loading'); });
+
+  try {
+    const { gap, tags, disliked, frequent } = buildRecommendCtx();
+    const baseCtx = `今日宏量剩余：热量 ${gap.kcal} kcal、蛋白质 ${gap.protein} g、碳水 ${gap.carbs} g、脂肪 ${gap.fat} g。\n饮食限制：${tags}。\n不喜欢：${disliked}。\n历史常吃食物（推荐时避免重复同类）：${frequent}。`;
+
+    const configs = {
+      home: {
+        system: '你是减脂营养教练。根据用户今日宏量缺口推荐2-3个在家做的减脂餐。每个方案：① 菜名 ② 主要食材和克重 ③ 简单做法（1-2句）④ 估算 kcal/蛋白质/碳水/脂肪。蛋白质缺口大时优先高蛋白方案。简洁中文。',
+        user: baseCtx + '\n\n场景：在家做饭。',
+        model: getApiModel(),
+      },
+      delivery: {
+        system: '你是减脂饮食顾问。根据用户位置和宏量缺口，在网上搜索附近真实存在的外卖餐厅，推荐2-3个具体选项。每项：① 餐厅名+菜品名 ② 如何定制（少油少酱）③ 估算营养。蛋白质优先。中文直接给建议。',
+        user: baseCtx + '\n\n场景：点外卖。',
+        model: 'gpt-4o-search-preview',
+      },
+      convenience: {
+        system: '你是减脂营养教练。推荐便利店（全家、7-11、罗森等）能买到的食品组合，给2-3个方案，每个方案列具体商品名+约克数+营养估算。蛋白质缺口大时优先鸡胸肉罐头、溏心蛋、希腊酸奶等。简洁中文。',
+        user: baseCtx + '\n\n场景：去便利店。',
+        model: getApiModel(),
+      },
+      snack: {
+        system: '你是减脂营养教练。推荐3个加餐零食方案，热量150-250kcal内，优先高蛋白低糖。每个方案：零食名+分量+估算营养+适合时段。中文简洁。',
+        user: baseCtx + '\n\n场景：加餐零食，不是正餐。',
+        model: getApiModel(),
+      },
+    };
+
+    const cfg = configs[scenario];
+    let userContent = cfg.user;
+
+    if (scenario === 'delivery') {
+      let loc = '';
+      try {
+        const pos = await new Promise((res, rej) =>
+          navigator.geolocation.getCurrentPosition(res, rej, { timeout: 8000 })
+        );
+        loc = `我的GPS位置：纬度 ${pos.coords.latitude.toFixed(4)}，经度 ${pos.coords.longitude.toFixed(4)}。`;
+      } catch {
+        const input = prompt('GPS定位失败，请输入你的位置（如：Flushing Queens NY）：');
+        if (!input) { resultEl.innerHTML = '<div class="muted small">已取消</div>'; return; }
+        loc = `我在 ${input}。`;
+      }
+      userContent = loc + '\n' + userContent;
+    }
+
+    const result = await callOpenAI({
+      messages: [
+        { role: 'system', content: cfg.system },
+        { role: 'user', content: userContent },
+      ],
+      model: cfg.model,
+    });
+
+    if (result) {
+      const html = escapeHtml(result)
+        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/^#{1,3} (.+)$/gm, '<div class="rec-heading">$1</div>')
+        .replace(/\n{2,}/g, '<br><br>')
+        .replace(/\n/g, '<br>');
+      resultEl.innerHTML = `<div class="rec-text">${html}</div>
+        <button class="btn-link block" style="margin-top:12px;border-top:1px solid #f1f5f9;padding-top:12px" onclick="aiRecommend('${scenario}')">↻ 换一批推荐</button>`;
+    } else {
+      resultEl.innerHTML = '<div class="muted small">推荐失败，请检查 API Key 是否有效。</div>';
+    }
+  } finally {
+    aiRecommending = false;
+    btns.forEach(b => { b.disabled = false; b.classList.remove('loading'); });
+  }
+}
+
 /* ============== Boot ============== */
 
 window.addEventListener('DOMContentLoaded', () => {
@@ -1477,3 +1704,8 @@ window.aiEstimateFood = aiEstimateFood;
 window.aiPhotoFood = aiPhotoFood;
 window.aiSuggestMeal = aiSuggestMeal;
 window.closeAiModal = closeAiModal;
+window.dismissMealPrompt = dismissMealPrompt;
+window.goToRecommend = goToRecommend;
+window.toggleTag = toggleTag;
+window.savePreferences = savePreferences;
+window.aiRecommend = aiRecommend;
