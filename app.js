@@ -1253,9 +1253,7 @@ async function aiSuggestMeal() {
 
   const fSum = sumFoods(todaysFoods());
   const exKcal = sumExercises(todaysExercises());
-  const cw = currentWeight();
   const g = state.goal;
-
   const remaining = {
     kcal: Math.max(0, (g.kcalTarget || 2000) - fSum.kcal + exKcal),
     protein: Math.max(0, (g.proteinTarget || 0) - fSum.p),
@@ -1263,28 +1261,74 @@ async function aiSuggestMeal() {
     fat: Math.max(0, (g.fatTarget || 0) - fSum.f),
   };
 
-  const context = prompt(
-    '场景描述（可选）：\n例如：\n• 在家，冰箱有鸡胸/西兰花/米饭\n• 想去 Chipotle\n• 中午想吃中餐外卖',
-    ''
-  );
-  if (context === null) return;
+  // Ask: delivery or cook at home?
+  const mode = confirm('想点外卖 / 出去吃？\n\n确定 = 搜附近真实餐厅\n取消 = 给在家做饭的建议');
 
-  openAiModal('🍽 推荐吃法', `剩余预算 · ${Math.round(remaining.kcal)} kcal · 蛋白 ${Math.round(remaining.protein)}g · 碳水 ${Math.round(remaining.carbs)}g · 脂肪 ${Math.round(remaining.fat)}g`);
+  if (mode) {
+    await aiSuggestNearby(remaining);
+  } else {
+    await aiSuggestHome(remaining);
+  }
+}
+
+async function aiSuggestNearby(remaining) {
+  openAiModal('📍 附近餐厅推荐', '正在获取位置…');
+
+  let locationDesc = '';
+  try {
+    const pos = await new Promise((resolve, reject) =>
+      navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 8000 })
+    );
+    const { latitude: lat, longitude: lng } = pos.coords;
+    locationDesc = `我当前的 GPS 坐标是纬度 ${lat.toFixed(4)}，经度 ${lng.toFixed(4)}。`;
+    document.getElementById('ai-modal-context').textContent =
+      `📍 ${lat.toFixed(4)}, ${lng.toFixed(4)} · 剩余 ${Math.round(remaining.kcal)} kcal · 蛋白 ${Math.round(remaining.protein)}g`;
+  } catch (e) {
+    // Geolocation denied or failed — ask user to type location
+    const loc = prompt('获取 GPS 失败。请输入你的位置（如：Flushing Queens NY）：');
+    if (!loc) { closeAiModal(); return; }
+    locationDesc = `我在 ${loc}。`;
+    document.getElementById('ai-modal-context').textContent =
+      `📍 ${loc} · 剩余 ${Math.round(remaining.kcal)} kcal · 蛋白 ${Math.round(remaining.protein)}g`;
+  }
+
+  document.getElementById('ai-modal-body').innerHTML = '<div class="modal-loading">正在搜索附近餐厅…</div>';
 
   const result = await callOpenAI({
     messages: [
-      { role: 'system', content: '你是减脂教练。基于剩余宏量预算给具体可执行的吃法建议。规则：1) 给 2-3 个方案，每个 3-4 行；2) 每个方案明确写出菜名/餐厅+具体点单或做法+估算 kcal/P/C/F；3) 优先满足蛋白预算；4) 简短直接，不要废话不要免责声明；5) 中文回复，使用简单 markdown 列表。' },
+      {
+        role: 'system',
+        content: '你是减脂饮食顾问。用户给你他的位置和今日剩余宏量预算，请在网上搜索他附近真实存在的餐厅，给出 3 个具体建议。每个建议要包含：① 餐厅真实名称和地址或交叉路口 ② 具体点哪道菜或怎么定制（比如少油、少酱、不加XX）③ 大致热量/蛋白估算。优先推荐有外卖的餐厅。直接给建议，不要废话，中文回复。',
+      },
       {
         role: 'user',
-        content: `今日剩余预算：
+        content: `${locationDesc}
+
+今日剩余宏量预算：
 - 热量：${Math.round(remaining.kcal)} kcal
 - 蛋白：${Math.round(remaining.protein)} g
 - 碳水：${Math.round(remaining.carbs)} g
 - 脂肪：${Math.round(remaining.fat)} g
 
-场景：${context.trim() || '在家随便吃'}
+帮我搜一下附近真实存在的餐厅，推荐 3 家 + 每家具体点什么。`,
+      },
+    ],
+    model: 'gpt-4o-search-preview',
+  });
 
-给我具体的吃法方案。`,
+  setAiModalBody(result || '没有找到结果，请检查网络或手动输入位置。');
+}
+
+async function aiSuggestHome(remaining) {
+  const context = prompt('冰箱里有什么食材？（可以不填）', '') ?? '';
+  openAiModal('🍳 在家吃什么', `剩余 ${Math.round(remaining.kcal)} kcal · 蛋白 ${Math.round(remaining.protein)}g`);
+
+  const result = await callOpenAI({
+    messages: [
+      { role: 'system', content: '你是减脂教练。给出 2-3 个具体在家做的方案。每个方案写：菜名、关键食材和克重、简单做法、估算 kcal/P/C/F。简短直接，中文。' },
+      {
+        role: 'user',
+        content: `剩余预算：${Math.round(remaining.kcal)} kcal · 蛋白 ${Math.round(remaining.protein)}g · 碳水 ${Math.round(remaining.carbs)}g · 脂肪 ${Math.round(remaining.fat)}g\n食材：${context || '常见食材'}`,
       },
     ],
   });
@@ -1299,7 +1343,11 @@ function openAiModal(title, contextText) {
   document.getElementById('ai-modal').classList.remove('hidden');
 }
 function setAiModalBody(text) {
-  document.getElementById('ai-modal-body').textContent = text;
+  // Minimal markdown: **bold**, newlines
+  const html = escapeHtml(text)
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\n/g, '<br>');
+  document.getElementById('ai-modal-body').innerHTML = html;
 }
 function closeAiModal() {
   document.getElementById('ai-modal').classList.add('hidden');
