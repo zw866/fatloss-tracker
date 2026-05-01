@@ -850,13 +850,28 @@ function exportData() {
   toast('已导出 ✓');
 }
 
-function importHealthFile(ev) {
+function importHealthFile(ev, preparsed) {
+  if (preparsed) {
+    _processHealthImport(preparsed);
+    return;
+  }
   const file = ev.target.files[0];
   if (!file) return;
   const reader = new FileReader();
   reader.onload = e => {
     try {
       const parsed = JSON.parse(e.target.result);
+      _processHealthImport(parsed);
+    } catch (err) {
+      toast('文件解析失败');
+      console.error(err);
+    }
+  };
+  reader.readAsText(file);
+  ev.target.value = '';
+}
+
+function _processHealthImport(parsed) {
       const days = parsed.daily || parsed.entries || (Array.isArray(parsed) ? parsed : null);
       if (!days) { toast('文件格式不识别'); return; }
 
@@ -913,13 +928,6 @@ function importHealthFile(ev) {
       saveState();
       renderForTab('settings');
       alert(`✓ 导入完成\n\n运动记录：${exAdded} 条\n体重记录：${weightAdded} 条\n\n活动能量平均：${avgActive.toFixed(0)} kcal/天 (基于 ${activityDays} 天数据)\n\n建议去「今日」页查看新的 TDEE 和热量目标。`);
-    } catch (err) {
-      toast('文件解析失败');
-      console.error(err);
-    }
-  };
-  reader.readAsText(file);
-  ev.target.value = '';
 }
 
 function importData(ev) {
@@ -929,6 +937,13 @@ function importData(ev) {
   reader.onload = e => {
     try {
       const parsed = JSON.parse(e.target.result);
+
+      // Auto-detect Health JSON and route to the right importer
+      if (parsed.daily || parsed.metadata?.source === 'Apple HealthKit') {
+        importHealthFile(ev, parsed);
+        return;
+      }
+
       if (!parsed.profile || !parsed.weights) throw new Error('格式不对');
       if (!confirm('覆盖当前所有数据？')) return;
       state = Object.assign(structuredClone(defaultState), parsed);
@@ -937,7 +952,7 @@ function importData(ev) {
       showTab('today');
       toast('已导入 ✓');
     } catch (err) {
-      toast('文件格式错误');
+      toast('文件格式错误：' + err.message);
     }
   };
   reader.readAsText(file);
