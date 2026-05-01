@@ -232,7 +232,11 @@
     </div>
 
     <div class="card">
-      <div class="card-title">今日记录</div>
+      <div class="food-date-nav">
+        <button class="date-nav-arrow" onclick="foodDateShift(-1)">‹</button>
+        <span id="food-view-date">今天</span>
+        <button class="date-nav-arrow" id="food-date-next" onclick="foodDateShift(1)" disabled>›</button>
+      </div>
       <div id="food-list" class="list"></div>
       <div class="totals" id="food-totals"></div>
     </div>

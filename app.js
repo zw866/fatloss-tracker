@@ -509,9 +509,29 @@ function drawWeightChart() {
 
 /* ============== FOOD tab ============== */
 
+let foodViewDate = todayISO();
+
+function foodDateShift(delta) {
+  const d = new Date(foodViewDate + 'T00:00:00');
+  d.setDate(d.getDate() + delta);
+  const next = d.toISOString().slice(0, 10);
+  if (next > todayISO()) return;
+  foodViewDate = next;
+  renderFood();
+}
+
 function renderFood() {
+  // date nav
+  const isToday = foodViewDate === todayISO();
+  const dateLabel = document.getElementById('food-view-date');
+  if (dateLabel) {
+    dateLabel.textContent = isToday ? '今天' : fmtFullDate(foodViewDate);
+  }
+  const nextBtn = document.getElementById('food-date-next');
+  if (nextBtn) nextBtn.disabled = isToday;
+
   const list = document.getElementById('food-list');
-  const today = todaysFoods();
+  const today = state.foods.filter(f => f.date === foodViewDate);
   const grouped = {
     breakfast: [], lunch: [], dinner: [], snack: [],
   };
@@ -1116,13 +1136,14 @@ async function callOpenAI({ messages, json = false, model }) {
     showTab('settings');
     return null;
   }
-  const body = {
-    model: model || getApiModel(),
-    messages,
-    temperature: 0.3,
-    max_tokens: 800,
-  };
-  if (json) body.response_format = { type: 'json_object' };
+  const usedModel = model || getApiModel();
+  const isSearchModel = usedModel.includes('search');
+  const body = { model: usedModel, messages };
+  if (!isSearchModel) {
+    body.temperature = 0.3;
+    body.max_tokens = 800;
+  }
+  if (json && !isSearchModel) body.response_format = { type: 'json_object' };
 
   let resp;
   try {
@@ -1366,7 +1387,7 @@ async function aiSuggestNearby(remaining) {
     model: 'gpt-4o-search-preview',
   });
 
-  setAiModalBody(result || '没有找到结果，请检查网络或手动输入位置。');
+  setAiModalBody(result || '搜索失败。请检查：①API Key 是否有效 ②账户是否有 gpt-4o-search-preview 权限。错误详情见浏览器控制台。');
 }
 
 async function aiSuggestHome(remaining) {
@@ -1435,6 +1456,7 @@ window.setWeightRange = setWeightRange;
 window.setExerciseRange = setExerciseRange;
 window.addFood = addFood;
 window.deleteFood = deleteFood;
+window.foodDateShift = foodDateShift;
 window.addExercise = addExercise;
 window.deleteExercise = deleteExercise;
 window.pasteHealthData = pasteHealthData;

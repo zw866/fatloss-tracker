@@ -492,6 +492,33 @@ select {
   padding: 30px 0;
 }
 
+/* ============== Food date nav ============== */
+.food-date-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.food-date-nav span {
+  font-weight: 600;
+  font-size: 15px;
+}
+.date-nav-arrow {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #f1f5f9;
+  font-size: 22px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #1a1f2e;
+  transition: background 0.15s;
+}
+.date-nav-arrow:active { background: #e2e8f0; }
+.date-nav-arrow:disabled { color: #d1d5db; cursor: default; }
+
 /* ============== Toast ============== */
 .toast {
   position: fixed;
