@@ -141,6 +141,7 @@ ol, ul { list-style: none; }
 input[type="text"],
 input[type="number"],
 input[type="date"],
+input[type="password"],
 select {
   height: 42px;
   padding: 0 12px;
@@ -359,9 +360,35 @@ select {
   font-weight: 500;
 }
 .nav-item.active { color: #10b981; }
-.bottom-nav .nav-item:nth-child(6) ~ .nav-item .nav-label,
-.bottom-nav:has(.nav-item:nth-child(6)) .nav-label { font-size: 10px; }
 .nav-icon { font-size: 18px; }
+
+/* ============== Segment control (Records tab) ============== */
+.segment-control {
+  display: flex;
+  background: #f1f5f9;
+  border-radius: 12px;
+  padding: 3px;
+  gap: 2px;
+}
+.segment {
+  flex: 1;
+  height: 36px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #6b7280;
+  transition: all 0.2s ease;
+}
+.segment.active {
+  background: #ffffff;
+  color: #1a1f2e;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+}
+.records-sub {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
 
 /* ============== Onboarding ============== */
 .onboarding {
@@ -417,14 +444,6 @@ select {
 .recommend-card {
   background: linear-gradient(135deg, #fdf4ff, #ffffff);
 }
-.recommend-card .btn-secondary {
-  background: linear-gradient(135deg, #818cf8, #6366f1);
-  color: #fff;
-  margin-top: 8px;
-}
-.recommend-card .btn-secondary:active {
-  background: linear-gradient(135deg, #6366f1, #4f46e5);
-}
 
 .form-label {
   display: flex;
@@ -435,7 +454,7 @@ select {
   font-weight: 500;
 }
 
-/* ============== Modal ============== */
+/* ============== AI Modal ============== */
 .modal {
   position: fixed;
   inset: 0;
@@ -494,6 +513,41 @@ select {
   padding: 30px 0;
 }
 
+/* ============== Custom Confirm Modal ============== */
+.confirm-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.5);
+  backdrop-filter: blur(6px);
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+.confirm-modal-card {
+  background: #fff;
+  border-radius: 18px;
+  padding: 24px;
+  max-width: 340px;
+  width: 100%;
+  text-align: center;
+}
+.confirm-modal-card p {
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.5;
+  margin-bottom: 20px;
+  color: #1a1f2e;
+}
+.confirm-modal-actions {
+  display: flex;
+  gap: 10px;
+}
+.confirm-modal-actions > button {
+  flex: 1;
+}
+
 /* ============== Meal prompt ============== */
 .meal-prompt {
   background: linear-gradient(135deg, #f0fdf4, #ecfdf5);
@@ -527,6 +581,7 @@ select {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 10px;
+  margin-top: 10px;
 }
 .scenario-btn {
   display: flex;
@@ -563,17 +618,6 @@ select {
   transition: background 0.15s;
 }
 .pref-chip.active { background: #10b981; color: #fff; }
-
-/* ============== Recommend gap bars ============== */
-.gap-row { margin-bottom: 12px; }
-.gap-row:last-child { margin-bottom: 0; }
-.gap-label {
-  display: flex;
-  justify-content: space-between;
-  font-size: 13px;
-  font-weight: 500;
-  margin-bottom: 6px;
-}
 
 /* ============== Recommend result ============== */
 .rec-text { font-size: 14px; line-height: 1.75; }

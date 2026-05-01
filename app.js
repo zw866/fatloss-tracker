@@ -110,9 +110,6 @@ function recommendedKcal(tdee) {
   return Math.max(tdee - 850, min);
 }
 function recommendedMacros(weight, kcalTarget) {
-  // Protein 2g/kg of body weight
-  // Fat 25% of kcal
-  // Carbs = remainder
   const protein = Math.round(weight * 2);
   const fatKcal = kcalTarget * 0.25;
   const fat = Math.round(fatKcal / 9);
@@ -153,7 +150,29 @@ function toast(msg, ms = 1800) {
   toast._t = setTimeout(() => el.classList.add('hidden'), ms);
 }
 
+/* ============== Custom Confirm Modal ============== */
+
+let _customModalResolve = null;
+
+function showCustomModal(msg) {
+  return new Promise(resolve => {
+    _customModalResolve = resolve;
+    document.getElementById('custom-modal-msg').textContent = msg;
+    document.getElementById('custom-modal').classList.remove('hidden');
+  });
+}
+
+function resolveCustomModal(result) {
+  document.getElementById('custom-modal').classList.add('hidden');
+  if (_customModalResolve) {
+    _customModalResolve(result);
+    _customModalResolve = null;
+  }
+}
+
 /* ============== Tab navigation ============== */
+
+let currentRecordsSub = 'weight';
 
 function showTab(name) {
   document.querySelectorAll('.tab').forEach(t => {
@@ -162,10 +181,6 @@ function showTab(name) {
   document.querySelectorAll('.nav-item').forEach(n => {
     n.classList.toggle('active', n.dataset.nav === name);
   });
-  // some tabs not in bottom nav (settings) — keep all unchecked then
-  if (!document.querySelector(`.nav-item[data-nav="${name}"]`)) {
-    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-  }
   renderForTab(name);
   window.scrollTo({ top: 0, behavior: 'instant' });
 }
@@ -173,13 +188,57 @@ function showTab(name) {
 function renderForTab(name) {
   switch (name) {
     case 'today': renderToday(); break;
+    case 'records': renderRecords(); break;
+    case 'insights': renderInsights(); break;
+    case 'settings': renderSettings(); break;
+  }
+}
+
+/* ============== Records tab: segment control ============== */
+
+function setRecordsSub(sub) {
+  currentRecordsSub = sub;
+  document.querySelectorAll('.segment-control .segment').forEach(s => {
+    s.classList.toggle('active', s.dataset.sub === sub);
+  });
+  document.querySelectorAll('.records-sub').forEach(s => {
+    s.classList.toggle('hidden', s.dataset.sub !== sub);
+  });
+  renderRecordsSub(sub);
+}
+
+function goRecordsSub(sub) {
+  showTab('records');
+  setRecordsSub(sub);
+}
+
+function renderRecords() {
+  renderRecordsSub(currentRecordsSub);
+}
+
+function renderRecordsSub(sub) {
+  switch (sub) {
     case 'weight': renderWeight(); break;
     case 'food': renderFood(); break;
     case 'exercise': renderExercise(); break;
-    case 'body': renderBody(); break;
-    case 'settings': renderSettings(); break;
-    case 'recommend': renderRecommend(); break;
   }
+}
+
+function scrollToRecommend() {
+  const el = document.getElementById('recommend-section');
+  if (el) {
+    // Make sure we're on today tab
+    if (document.querySelector('.tab[data-tab="today"]').classList.contains('hidden')) {
+      showTab('today');
+    }
+    setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
+  }
+}
+
+/* ============== Insights tab ============== */
+
+function renderInsights() {
+  renderBody();
 }
 
 /* ============== Onboarding ============== */
@@ -341,13 +400,13 @@ function setMacroBar(key, val, target) {
 
 function generateTip(cw, fSum, exKcal) {
   const goal = state.goal;
-  if (!cw) return '今天还没记体重，去「体重」页加一条。';
+  if (!cw) return '今天还没记体重，去「记录 → 体重」加一条。';
   if (!goal.kcalTarget) return '在「更多」里设个目标，今天就有缺口数据可看了。';
 
   const tdee = calcTDEE(state.profile, cw);
   const deficit = tdee + exKcal - fSum.kcal;
 
-  if (fSum.kcal === 0) return '今天还没记饮食，去「饮食」页加一餐 🍽';
+  if (fSum.kcal === 0) return '今天还没记饮食，去「记录 → 饮食」加一餐 🍽';
   if (deficit < 0) return `今天热量超了 ${Math.abs(Math.round(deficit))} kcal，明天补回来。`;
   if (deficit < 300) return `缺口偏小 (${Math.round(deficit)} kcal)，可以加点低强度有氧。`;
   if (deficit > 1200) return `缺口偏大 (${Math.round(deficit)} kcal)，注意别长期这样，容易代谢适应。`;
@@ -360,6 +419,7 @@ function generateTip(cw, fSum, exKcal) {
 function renderWeight() {
   // history list
   const list = document.getElementById('weight-history');
+  if (!list) return;
   const sorted = [...state.weights].sort((a, b) => b.date.localeCompare(a.date));
   list.innerHTML = sorted.length === 0
     ? '<div class="muted small">暂无记录</div>'
@@ -393,8 +453,8 @@ function addWeight() {
   toast('已记录 ✓');
 }
 
-function deleteWeight(date) {
-  if (!confirm('删除这条记录？')) return;
+async function deleteWeight(date) {
+  if (!await showCustomModal('删除这条记录？')) return;
   state.weights = state.weights.filter(w => w.date !== date);
   saveState();
   renderWeight();
@@ -411,6 +471,7 @@ function setWeightRange(range, ev) {
 function drawWeightChart() {
   const container = document.getElementById('weight-chart');
   const meta = document.getElementById('weight-chart-meta');
+  if (!container) return;
   let data = [...state.weights].sort((a, b) => a.date.localeCompare(b.date));
   if (state.weightRange !== 'all') {
     const cutoff = new Date();
@@ -542,6 +603,7 @@ function renderFood() {
   if (nextBtn) nextBtn.disabled = isToday;
 
   const list = document.getElementById('food-list');
+  if (!list) return;
   const today = state.foods.filter(f => f.date === foodViewDate);
   const grouped = {
     breakfast: [], lunch: [], dinner: [], snack: [],
@@ -711,6 +773,7 @@ function drawExerciseChart() {
 function renderExercise() {
   drawExerciseChart();
   const list = document.getElementById('exercise-list');
+  if (!list) return;
   const today = todaysExercises();
   list.innerHTML = today.length === 0
     ? '<div class="muted small">今天还没有运动记录</div>'
@@ -780,13 +843,11 @@ async function pasteHealthData() {
 }
 
 function importHealthData(data) {
-  // Accept either { kcal: number, date: ISOstring } or { entries: [...] }
   let added = 0;
   const handle = (obj) => {
     const kcal = +obj.kcal || +obj.activeEnergy || 0;
     const date = (obj.date || todayISO()).slice(0, 10);
     if (kcal <= 0) return;
-    // remove any previous health entry for this date to avoid duplicates
     state.exercises = state.exercises.filter(e => !(e.source === 'health' && e.date === date));
     state.exercises.push({
       id: Math.random().toString(36).slice(2, 10),
@@ -803,10 +864,11 @@ function importHealthData(data) {
   toast(`已导入 ${added} 条 ✓`);
 }
 
-/* ============== BODY tab ============== */
+/* ============== BODY (in Insights tab) ============== */
 
 function renderBody() {
   const list = document.getElementById('body-history');
+  if (!list) return;
   const sorted = [...state.bodyMeasurements].sort((a, b) => b.date.localeCompare(a.date));
   list.innerHTML = sorted.length === 0
     ? '<div class="muted small">暂无记录</div>'
@@ -829,12 +891,14 @@ function renderBody() {
 
   // Photo grid
   const grid = document.getElementById('photo-grid');
-  grid.innerHTML = state.photos.map((p, i) => `
-    <div class="photo-item">
-      <img src="${p.dataUrl}" alt="">
-      <span class="photo-date">${fmtDate(p.date)}</span>
-      <span class="photo-del" onclick="deletePhoto(${i})">×</span>
-    </div>`).join('');
+  if (grid) {
+    grid.innerHTML = state.photos.map((p, i) => `
+      <div class="photo-item">
+        <img src="${p.dataUrl}" alt="">
+        <span class="photo-date">${fmtDate(p.date)}</span>
+        <span class="photo-del" onclick="deletePhoto(${i})">×</span>
+      </div>`).join('');
+  }
 }
 
 function addBody() {
@@ -863,8 +927,8 @@ function addBody() {
   toast('已保存 ✓');
 }
 
-function deleteBody(date) {
-  if (!confirm('删除这条记录？')) return;
+async function deleteBody(date) {
+  if (!await showCustomModal('删除这条记录？')) return;
   state.bodyMeasurements = state.bodyMeasurements.filter(b => b.date !== date);
   saveState();
   renderBody();
@@ -875,7 +939,6 @@ function addPhoto(ev) {
   if (!file) return;
   const reader = new FileReader();
   reader.onload = e => {
-    // Resize to max 800px to keep storage small
     resizeImage(e.target.result, 800).then(small => {
       state.photos.unshift({ date: todayISO(), dataUrl: small });
       saveState();
@@ -909,8 +972,8 @@ function resizeImage(dataUrl, maxSize) {
   });
 }
 
-function deletePhoto(i) {
-  if (!confirm('删除这张照片？')) return;
+async function deletePhoto(i) {
+  if (!await showCustomModal('删除这张照片？')) return;
   state.photos.splice(i, 1);
   saveState();
   renderBody();
@@ -938,6 +1001,13 @@ function renderSettings() {
     keyInput.value = '';
     keyInput.placeholder = apiKey ? '已设置 (••••' + apiKey.slice(-4) + ')，留空则保留旧值' : 'sk-...';
     document.getElementById('set-api-model').value = getApiModel();
+  }
+  // Preferences (moved from recommend tab)
+  renderPrefChips();
+  const freqEl = document.getElementById('pref-frequent');
+  if (freqEl) {
+    const freq = getFrequentFoods(5);
+    freqEl.textContent = freq.length ? `常吃食物（AI 推荐时参考）：${freq.join('、')}` : '';
   }
 }
 
@@ -1012,69 +1082,66 @@ function importHealthFile(ev, preparsed) {
 }
 
 function _processHealthImport(parsed) {
-      const days = parsed.daily || parsed.entries || (Array.isArray(parsed) ? parsed : null);
-      if (!days) { toast('文件格式不识别'); return; }
+  const days = parsed.daily || parsed.entries || (Array.isArray(parsed) ? parsed : null);
+  if (!days) { toast('文件格式不识别'); return; }
 
-      let exAdded = 0;
-      let weightAdded = 0;
-      let weightSum = 0, weightCount = 0;
-      let activitySum = 0, activityDays = 0;
+  let exAdded = 0;
+  let weightAdded = 0;
+  let activitySum = 0, activityDays = 0;
 
-      days.forEach(d => {
-        const date = (d.date || '').slice(0, 10);
-        if (!date) return;
+  days.forEach(d => {
+    const date = (d.date || '').slice(0, 10);
+    if (!date) return;
 
-        const kcal = d.active_energy_kcal != null ? +d.active_energy_kcal : (+d.kcal || 0);
-        if (kcal > 5) {
-          state.exercises = state.exercises.filter(e => !(e.source === 'health' && e.date === date));
-          state.exercises.push({
-            id: Math.random().toString(36).slice(2, 10),
-            date,
-            type: 'Apple Health 活动',
-            duration: 0,
-            kcal: Math.round(kcal),
-            note: d.steps ? `${d.steps} 步` : '',
-            source: 'health',
-          });
-          exAdded++;
-          activitySum += kcal;
-          activityDays++;
-        }
-
-        if (d.weight_kg != null && d.weight_kg > 0) {
-          if (!state.weights.find(w => w.date === date)) {
-            state.weights.push({ date, kg: +d.weight_kg });
-            weightAdded++;
-          }
-          weightSum += +d.weight_kg;
-          weightCount++;
-        }
+    const kcal = d.active_energy_kcal != null ? +d.active_energy_kcal : (+d.kcal || 0);
+    if (kcal > 5) {
+      state.exercises = state.exercises.filter(e => !(e.source === 'health' && e.date === date));
+      state.exercises.push({
+        id: Math.random().toString(36).slice(2, 10),
+        date,
+        type: 'Apple Health 活动',
+        duration: 0,
+        kcal: Math.round(kcal),
+        note: d.steps ? `${d.steps} 步` : '',
+        source: 'health',
       });
+      exAdded++;
+      activitySum += kcal;
+      activityDays++;
+    }
 
-      // Auto-calibrate activity factor based on real data
-      const avgActive = activityDays > 0 ? activitySum / activityDays : 0;
-      if (avgActive > 0 && state.weights.length > 0) {
-        const cw = currentWeight();
-        const bmr = calcBMR({ ...state.profile, weight: cw });
-        // Real TDEE estimate = BMR + active energy + ~10% TEF (assume on target intake)
-        const realTDEE = bmr + avgActive + (state.goal.kcalTarget || 2200) * 0.1;
-        const realFactor = realTDEE / bmr;
-        if (Math.abs(realFactor - state.profile.activity) > 0.1) {
-          state.profile.activity = Math.round(realFactor * 1000) / 1000;
-          toast(`已根据真实活动数据校准活动系数为 ${state.profile.activity.toFixed(2)}`, 3500);
-        }
+    if (d.weight_kg != null && d.weight_kg > 0) {
+      if (!state.weights.find(w => w.date === date)) {
+        state.weights.push({ date, kg: +d.weight_kg });
+        weightAdded++;
       }
+    }
+  });
 
-      saveState();
-      renderForTab('settings');
-      alert(`✓ 导入完成\n\n运动记录：${exAdded} 条\n体重记录：${weightAdded} 条\n\n活动能量平均：${avgActive.toFixed(0)} kcal/天 (基于 ${activityDays} 天数据)\n\n建议去「今日」页查看新的 TDEE 和热量目标。`);
+  // Auto-calibrate activity factor based on real data
+  const avgActive = activityDays > 0 ? activitySum / activityDays : 0;
+  if (avgActive > 0 && state.weights.length > 0) {
+    const cw = currentWeight();
+    const bmr = calcBMR({ ...state.profile, weight: cw });
+    const realTDEE = bmr + avgActive + (state.goal.kcalTarget || 2200) * 0.1;
+    const realFactor = realTDEE / bmr;
+    if (Math.abs(realFactor - state.profile.activity) > 0.1) {
+      state.profile.activity = Math.round(realFactor * 1000) / 1000;
+      toast(`已根据真实活动数据校准活动系数为 ${state.profile.activity.toFixed(2)}`, 3500);
+    }
+  }
+
+  saveState();
+  renderForTab('settings');
+  // Use custom modal-style alert
+  toast(`导入完成：运动 ${exAdded} 条，体重 ${weightAdded} 条，日均活动 ${avgActive.toFixed(0)} kcal`, 4000);
 }
 
-function importData(ev) {
+async function importData(ev) {
   const file = ev.target.files[0];
   if (!file) return;
   const reader = new FileReader();
-  reader.onload = e => {
+  reader.onload = async (e) => {
     try {
       const parsed = JSON.parse(e.target.result);
 
@@ -1085,7 +1152,7 @@ function importData(ev) {
       }
 
       if (!parsed.profile || !parsed.weights) throw new Error('格式不对');
-      if (!confirm('覆盖当前所有数据？')) return;
+      if (!await showCustomModal('覆盖当前所有数据？')) return;
       state = Object.assign(structuredClone(defaultState), parsed);
       saveState();
       renderForTab('today');
@@ -1099,9 +1166,9 @@ function importData(ev) {
   ev.target.value = '';
 }
 
-function resetAll() {
-  if (!confirm('确定清空所有数据？此操作不可撤销。')) return;
-  if (!confirm('再确认一次：所有体重、饮食、运动、照片都会消失。')) return;
+async function resetAll() {
+  if (!await showCustomModal('确定清空所有数据？此操作不可撤销。')) return;
+  if (!await showCustomModal('再确认一次：所有体重、饮食、运动、照片都会消失。')) return;
   localStorage.removeItem(STORAGE_KEY);
   state = structuredClone(defaultState);
   startOnboarding();
@@ -1125,12 +1192,12 @@ function getApiKey() {
 function getApiModel() {
   return localStorage.getItem(API_MODEL_STORAGE) || 'gpt-4o-mini';
 }
-function saveApiKey() {
+async function saveApiKey() {
   const key = document.getElementById('set-api-key').value.trim();
   const model = document.getElementById('set-api-model').value;
   if (key) {
     if (!key.startsWith('sk-')) {
-      if (!confirm('Key 看起来不像 OpenAI 格式（应该 sk- 开头）。仍然保存？')) return;
+      if (!await showCustomModal('Key 看起来不像 OpenAI 格式（应该 sk- 开头）。仍然保存？')) return;
     }
     localStorage.setItem(API_KEY_STORAGE, key);
   }
@@ -1326,116 +1393,7 @@ async function aiPhotoFood() {
   input.click();
 }
 
-async function aiSuggestMeal() {
-  if (!getApiKey()) {
-    toast('先到设置页填 API key');
-    showTab('settings');
-    return;
-  }
-
-  const fSum = sumFoods(todaysFoods());
-  const exKcal = sumExercises(todaysExercises());
-  const g = state.goal;
-  const remaining = {
-    kcal: Math.max(0, (g.kcalTarget || 2000) - fSum.kcal + exKcal),
-    protein: Math.max(0, (g.proteinTarget || 0) - fSum.p),
-    carbs: Math.max(0, (g.carbsTarget || 0) - fSum.c),
-    fat: Math.max(0, (g.fatTarget || 0) - fSum.f),
-  };
-
-  // Ask: delivery or cook at home?
-  const mode = confirm('想点外卖 / 出去吃？\n\n确定 = 搜附近真实餐厅\n取消 = 给在家做饭的建议');
-
-  if (mode) {
-    await aiSuggestNearby(remaining);
-  } else {
-    await aiSuggestHome(remaining);
-  }
-}
-
-async function aiSuggestNearby(remaining) {
-  openAiModal('📍 附近餐厅推荐', '正在获取位置…');
-
-  let locationDesc = '';
-  try {
-    const pos = await new Promise((resolve, reject) =>
-      navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 8000 })
-    );
-    const { latitude: lat, longitude: lng } = pos.coords;
-    locationDesc = `我当前的 GPS 坐标是纬度 ${lat.toFixed(4)}，经度 ${lng.toFixed(4)}。`;
-    document.getElementById('ai-modal-context').textContent =
-      `📍 ${lat.toFixed(4)}, ${lng.toFixed(4)} · 剩余 ${Math.round(remaining.kcal)} kcal · 蛋白 ${Math.round(remaining.protein)}g`;
-  } catch (e) {
-    // Geolocation denied or failed — ask user to type location
-    const loc = prompt('获取 GPS 失败。请输入你的位置（如：Flushing Queens NY）：');
-    if (!loc) { closeAiModal(); return; }
-    locationDesc = `我在 ${loc}。`;
-    document.getElementById('ai-modal-context').textContent =
-      `📍 ${loc} · 剩余 ${Math.round(remaining.kcal)} kcal · 蛋白 ${Math.round(remaining.protein)}g`;
-  }
-
-  document.getElementById('ai-modal-body').innerHTML = '<div class="modal-loading">正在搜索附近餐厅…</div>';
-
-  const result = await callOpenAI({
-    messages: [
-      {
-        role: 'system',
-        content: '你是减脂饮食顾问。用户给你他的位置和今日剩余宏量预算，请在网上搜索他附近真实存在的餐厅，给出 3 个具体建议。每个建议要包含：① 餐厅真实名称和地址或交叉路口 ② 具体点哪道菜或怎么定制（比如少油、少酱、不加XX）③ 大致热量/蛋白估算。优先推荐有外卖的餐厅。直接给建议，不要废话，中文回复。',
-      },
-      {
-        role: 'user',
-        content: `${locationDesc}
-
-今日剩余宏量预算：
-- 热量：${Math.round(remaining.kcal)} kcal
-- 蛋白：${Math.round(remaining.protein)} g
-- 碳水：${Math.round(remaining.carbs)} g
-- 脂肪：${Math.round(remaining.fat)} g
-
-帮我搜一下附近真实存在的餐厅，推荐 3 家 + 每家具体点什么。`,
-      },
-    ],
-    model: 'gpt-4o-search-preview',
-  });
-
-  setAiModalBody(result || '搜索失败。请检查：①API Key 是否有效 ②账户是否有 gpt-4o-search-preview 权限。错误详情见浏览器控制台。');
-}
-
-async function aiSuggestHome(remaining) {
-  const context = prompt('冰箱里有什么食材？（可以不填）', '') ?? '';
-  openAiModal('🍳 在家吃什么', `剩余 ${Math.round(remaining.kcal)} kcal · 蛋白 ${Math.round(remaining.protein)}g`);
-
-  const result = await callOpenAI({
-    messages: [
-      { role: 'system', content: '你是减脂教练。给出 2-3 个具体在家做的方案。每个方案写：菜名、关键食材和克重、简单做法、估算 kcal/P/C/F。简短直接，中文。' },
-      {
-        role: 'user',
-        content: `剩余预算：${Math.round(remaining.kcal)} kcal · 蛋白 ${Math.round(remaining.protein)}g · 碳水 ${Math.round(remaining.carbs)}g · 脂肪 ${Math.round(remaining.fat)}g\n食材：${context || '常见食材'}`,
-      },
-    ],
-  });
-
-  setAiModalBody(result || '（AI 没返回内容）');
-}
-
-function openAiModal(title, contextText) {
-  document.getElementById('ai-modal-title').textContent = title;
-  document.getElementById('ai-modal-context').textContent = contextText;
-  document.getElementById('ai-modal-body').innerHTML = '<div class="modal-loading">正在生成…</div>';
-  document.getElementById('ai-modal').classList.remove('hidden');
-}
-function setAiModalBody(text) {
-  // Minimal markdown: **bold**, newlines
-  const html = escapeHtml(text)
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\n/g, '<br>');
-  document.getElementById('ai-modal-body').innerHTML = html;
-}
-function closeAiModal() {
-  document.getElementById('ai-modal').classList.add('hidden');
-}
-
-/* ============== AI RECOMMEND tab ============== */
+/* ============== AI Recommend (inline in Today) ============== */
 
 const PRESET_TAGS = ['素食', '无辣', '无海鲜', '无麸质', '不吃牛肉', '无乳制品'];
 let aiRecommending = false;
@@ -1474,8 +1432,6 @@ function dismissMealPrompt() {
   document.getElementById('meal-prompt-card').classList.add('hidden');
 }
 
-function goToRecommend() { showTab('recommend'); }
-
 function getFrequentFoods(n = 6) {
   const count = {};
   state.foods.forEach(f => {
@@ -1504,42 +1460,6 @@ function buildRecommendCtx() {
   const disliked = (prefs.disliked || '').trim().slice(0, 200) || '无';
   const frequent = getFrequentFoods(6).join('、') || '暂无记录';
   return { fSum, gap, tags, disliked, frequent };
-}
-
-function renderRecommend() {
-  const { fSum, gap } = buildRecommendCtx();
-  const g = state.goal;
-
-  const gapsEl = document.getElementById('rec-gaps');
-  if (gapsEl) {
-    const items = [
-      { label: '蛋白质', eaten: fSum.p, target: g.proteinTarget, color: '#3b82f6' },
-      { label: '碳水',   eaten: fSum.c, target: g.carbsTarget,   color: '#f59e0b' },
-      { label: '脂肪',   eaten: fSum.f, target: g.fatTarget,     color: '#ef4444' },
-    ];
-    gapsEl.innerHTML = items.map(({ label, eaten, target, color }) => {
-      const pct = target ? Math.min(100, (eaten / target) * 100) : 0;
-      const remaining = target ? Math.max(0, target - eaten) : 0;
-      return `<div class="gap-row">
-        <div class="gap-label">
-          <span>${label}</span>
-          <span class="muted">${remaining > 0 ? `还差 ${Math.round(remaining)} g` : '✓ 已满足'}</span>
-        </div>
-        <div class="bar"><div class="fill" style="width:${pct.toFixed(1)}%;background:${color}"></div></div>
-      </div>`;
-    }).join('');
-  }
-
-  const kcalEl = document.getElementById('rec-kcal');
-  if (kcalEl) kcalEl.textContent = `热量剩余（含运动消耗）：${gap.kcal} kcal`;
-
-  renderPrefChips();
-
-  const freqEl = document.getElementById('pref-frequent');
-  if (freqEl) {
-    const freq = getFrequentFoods(5);
-    freqEl.textContent = freq.length ? `常吃食物（AI 推荐时参考）：${freq.join('、')}` : '';
-  }
 }
 
 function renderPrefChips() {
@@ -1651,6 +1571,24 @@ async function aiRecommend(scenario) {
   }
 }
 
+/* ============== AI Modal (for nearby restaurant etc.) ============== */
+
+function openAiModal(title, contextText) {
+  document.getElementById('ai-modal-title').textContent = title;
+  document.getElementById('ai-modal-context').textContent = contextText;
+  document.getElementById('ai-modal-body').innerHTML = '<div class="modal-loading">正在生成…</div>';
+  document.getElementById('ai-modal').classList.remove('hidden');
+}
+function setAiModalBody(text) {
+  const html = escapeHtml(text)
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\n/g, '<br>');
+  document.getElementById('ai-modal-body').innerHTML = html;
+}
+function closeAiModal() {
+  document.getElementById('ai-modal').classList.add('hidden');
+}
+
 /* ============== Boot ============== */
 
 window.addEventListener('DOMContentLoaded', () => {
@@ -1661,8 +1599,10 @@ window.addEventListener('DOMContentLoaded', () => {
   }
   // Re-draw chart on resize
   window.addEventListener('resize', () => {
-    if (!document.querySelector('.tab[data-tab="weight"]').classList.contains('hidden')) {
-      drawWeightChart();
+    const recordsTab = document.querySelector('.tab[data-tab="records"]');
+    if (recordsTab && !recordsTab.classList.contains('hidden')) {
+      if (currentRecordsSub === 'weight') drawWeightChart();
+      if (currentRecordsSub === 'exercise') drawExerciseChart();
     }
   });
 });
@@ -1702,10 +1642,12 @@ window.saveApiKey = saveApiKey;
 window.voiceFoodInput = voiceFoodInput;
 window.aiEstimateFood = aiEstimateFood;
 window.aiPhotoFood = aiPhotoFood;
-window.aiSuggestMeal = aiSuggestMeal;
 window.closeAiModal = closeAiModal;
 window.dismissMealPrompt = dismissMealPrompt;
-window.goToRecommend = goToRecommend;
+window.scrollToRecommend = scrollToRecommend;
+window.goRecordsSub = goRecordsSub;
+window.setRecordsSub = setRecordsSub;
+window.resolveCustomModal = resolveCustomModal;
 window.toggleTag = toggleTag;
 window.savePreferences = savePreferences;
 window.aiRecommend = aiRecommend;

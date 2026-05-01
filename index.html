@@ -64,7 +64,7 @@
 <!-- Main app -->
 <main id="app">
 
-  <!-- TODAY TAB -->
+  <!-- ==================== TODAY TAB ==================== -->
   <section class="tab" data-tab="today">
     <header class="page-header">
       <div>
@@ -99,25 +99,25 @@
 
     <!-- Quick stats grid -->
     <div class="stats-grid">
-      <div class="card stat-card weight" onclick="showTab('weight')">
+      <div class="card stat-card weight" onclick="goRecordsSub('weight')">
         <div class="stat-icon">⚖</div>
         <div class="stat-label">体重</div>
         <div class="stat-value" id="stat-weight">—</div>
         <div class="stat-delta" id="stat-weight-delta">—</div>
       </div>
-      <div class="card stat-card calories" onclick="showTab('food')">
+      <div class="card stat-card calories" onclick="goRecordsSub('food')">
         <div class="stat-icon">🍽</div>
         <div class="stat-label">摄入</div>
         <div class="stat-value" id="stat-calories">—</div>
         <div class="stat-delta" id="stat-calories-target">目标 —</div>
       </div>
-      <div class="card stat-card exercise" onclick="showTab('exercise')">
+      <div class="card stat-card exercise" onclick="goRecordsSub('exercise')">
         <div class="stat-icon">🔥</div>
         <div class="stat-label">运动消耗</div>
         <div class="stat-value" id="stat-exercise">—</div>
         <div class="stat-delta" id="stat-exercise-meta">—</div>
       </div>
-      <div class="card stat-card deficit" onclick="showTab('today')">
+      <div class="card stat-card deficit">
         <div class="stat-icon">📉</div>
         <div class="stat-label">今日缺口</div>
         <div class="stat-value" id="stat-deficit">—</div>
@@ -152,17 +152,35 @@
           <div class="meal-prompt-text" id="meal-prompt-text"></div>
         </div>
         <div class="meal-prompt-actions">
-          <button class="btn-primary meal-prompt-btn" onclick="goToRecommend()">看推荐</button>
+          <button class="btn-primary meal-prompt-btn" onclick="scrollToRecommend()">看推荐</button>
           <button class="icon-btn meal-prompt-close" onclick="dismissMealPrompt()">×</button>
         </div>
       </div>
     </div>
 
-    <!-- Recommendation -->
-    <div class="card recommend-card">
-      <div class="card-title">✨ AI 推荐吃什么</div>
-      <p class="muted small" id="remaining-budget">根据宏量缺口和饮食偏好个性化推荐</p>
-      <button class="btn-secondary block" onclick="showTab('recommend')">查看 AI 推荐 →</button>
+    <!-- Inline AI Recommend section -->
+    <div class="card recommend-card" id="recommend-section">
+      <div class="card-title">✨ 还能吃啥</div>
+      <p class="muted small" id="remaining-budget">基于剩余宏量预算给你推荐</p>
+      <div class="scenario-grid">
+        <button class="scenario-btn" onclick="aiRecommend('home')">
+          <span class="scenario-icon">🍳</span>
+          <span>自己做饭</span>
+        </button>
+        <button class="scenario-btn" onclick="aiRecommend('delivery')">
+          <span class="scenario-icon">🛵</span>
+          <span>点外卖</span>
+        </button>
+        <button class="scenario-btn" onclick="aiRecommend('convenience')">
+          <span class="scenario-icon">🏪</span>
+          <span>便利店</span>
+        </button>
+        <button class="scenario-btn" onclick="aiRecommend('snack')">
+          <span class="scenario-icon">🍎</span>
+          <span>加餐零食</span>
+        </button>
+      </div>
+      <div id="rec-result" class="muted small" style="margin-top:12px">选择场景，AI 根据宏量缺口和偏好推荐</div>
     </div>
 
     <!-- Tip -->
@@ -172,146 +190,148 @@
     </div>
   </section>
 
-  <!-- WEIGHT TAB -->
-  <section class="tab hidden" data-tab="weight">
+  <!-- ==================== RECORDS TAB (merged weight/food/exercise) ==================== -->
+  <section class="tab hidden" data-tab="records">
     <header class="page-header">
-      <h1>体重</h1>
+      <h1>记录</h1>
     </header>
 
-    <div class="card">
-      <div class="card-title">添加今日体重</div>
-      <div class="inline-form">
-        <input type="number" id="weight-input" inputmode="decimal" step="0.1" placeholder="kg">
-        <button class="btn-primary" onclick="addWeight()">记录</button>
+    <!-- Segment control -->
+    <div class="segment-control">
+      <button class="segment active" data-sub="weight" onclick="setRecordsSub('weight')">体重</button>
+      <button class="segment" data-sub="food" onclick="setRecordsSub('food')">饮食</button>
+      <button class="segment" data-sub="exercise" onclick="setRecordsSub('exercise')">运动</button>
+    </div>
+
+    <!-- Weight sub-section -->
+    <div class="records-sub" data-sub="weight">
+      <div class="card">
+        <div class="card-title">添加今日体重</div>
+        <div class="inline-form">
+          <input type="number" id="weight-input" inputmode="decimal" step="0.1" placeholder="kg">
+          <button class="btn-primary" onclick="addWeight()">记录</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">趋势</div>
+        <div class="chart-tabs">
+          <button class="chip active" data-range="14" onclick="setWeightRange(14, event)">14天</button>
+          <button class="chip" data-range="30" onclick="setWeightRange(30, event)">30天</button>
+          <button class="chip" data-range="90" onclick="setWeightRange(90, event)">90天</button>
+          <button class="chip" data-range="all" onclick="setWeightRange('all', event)">全部</button>
+        </div>
+        <div id="weight-chart" class="chart"></div>
+        <div class="chart-meta" id="weight-chart-meta"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">历史记录</div>
+        <div id="weight-history" class="list"></div>
       </div>
     </div>
 
-    <div class="card">
-      <div class="card-title">趋势</div>
-      <div class="chart-tabs">
-        <button class="chip active" data-range="14" onclick="setWeightRange(14, event)">14天</button>
-        <button class="chip" data-range="30" onclick="setWeightRange(30, event)">30天</button>
-        <button class="chip" data-range="90" onclick="setWeightRange(90, event)">90天</button>
-        <button class="chip" data-range="all" onclick="setWeightRange('all', event)">全部</button>
+    <!-- Food sub-section -->
+    <div class="records-sub hidden" data-sub="food">
+      <div class="card">
+        <div class="card-title">添加食物</div>
+        <div class="ai-row">
+          <button class="btn-ai" id="btn-voice" onclick="voiceFoodInput()">🎤 语音</button>
+          <button class="btn-ai" onclick="aiEstimateFood()">🤖 AI估算</button>
+          <button class="btn-ai" onclick="aiPhotoFood()">📸 拍照</button>
+        </div>
+        <div class="form-grid two-col">
+          <label>名称
+            <input type="text" id="food-name" placeholder="鸡胸肉 200g">
+          </label>
+          <label>热量 (kcal)
+            <input type="number" id="food-kcal" inputmode="numeric" placeholder="330">
+          </label>
+          <label>蛋白 (g)
+            <input type="number" id="food-protein" inputmode="decimal" step="0.1" placeholder="60">
+          </label>
+          <label>碳水 (g)
+            <input type="number" id="food-carbs" inputmode="decimal" step="0.1" placeholder="0">
+          </label>
+          <label>脂肪 (g)
+            <input type="number" id="food-fat" inputmode="decimal" step="0.1" placeholder="7">
+          </label>
+          <label>餐次
+            <select id="food-meal">
+              <option value="breakfast">早餐</option>
+              <option value="lunch">午餐</option>
+              <option value="dinner">晚餐</option>
+              <option value="snack">加餐/零食</option>
+            </select>
+          </label>
+        </div>
+        <button class="btn-primary block" onclick="addFood()">添加</button>
       </div>
-      <div id="weight-chart" class="chart"></div>
-      <div class="chart-meta" id="weight-chart-meta"></div>
+
+      <div class="card">
+        <div class="food-date-nav">
+          <button class="date-nav-arrow" onclick="foodDateShift(-1)">&#8249;</button>
+          <span id="food-view-date">今天</span>
+          <button class="date-nav-arrow" id="food-date-next" onclick="foodDateShift(1)" disabled>&#8250;</button>
+        </div>
+        <div id="food-list" class="list"></div>
+        <div class="totals" id="food-totals"></div>
+      </div>
     </div>
 
-    <div class="card">
-      <div class="card-title">历史记录</div>
-      <div id="weight-history" class="list"></div>
+    <!-- Exercise sub-section -->
+    <div class="records-sub hidden" data-sub="exercise">
+      <div class="card import-card">
+        <div class="card-title">从 Apple Health 导入</div>
+        <p class="muted small">用 iOS 快捷指令把今天的活动能量发到剪贴板，然后点下面的按钮粘贴。</p>
+        <div class="inline-form">
+          <button class="btn-secondary" onclick="pasteHealthData()">📋 粘贴 Health 数据</button>
+          <button class="btn-link" onclick="showTab('settings')">设置教程</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">手动添加</div>
+        <div class="form-grid two-col">
+          <label>类型
+            <input type="text" id="ex-type" placeholder="跑步 / 力量 / HIIT">
+          </label>
+          <label>时长 (分钟)
+            <input type="number" id="ex-duration" inputmode="numeric" placeholder="45">
+          </label>
+          <label>消耗 (kcal)
+            <input type="number" id="ex-kcal" inputmode="numeric" placeholder="400">
+          </label>
+          <label>备注
+            <input type="text" id="ex-note" placeholder="可选">
+          </label>
+        </div>
+        <button class="btn-primary block" onclick="addExercise()">添加</button>
+      </div>
+
+      <div class="card">
+        <div class="card-title">消耗趋势</div>
+        <div class="chart-tabs">
+          <button class="chip active" data-exrange="14" onclick="setExerciseRange(14, event)">14天</button>
+          <button class="chip" data-exrange="30" onclick="setExerciseRange(30, event)">30天</button>
+          <button class="chip" data-exrange="all" onclick="setExerciseRange('all', event)">全部</button>
+        </div>
+        <div id="exercise-chart" class="chart"></div>
+        <div class="chart-meta" id="exercise-chart-meta"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">今日运动</div>
+        <div id="exercise-list" class="list"></div>
+        <div class="totals" id="exercise-totals"></div>
+      </div>
     </div>
   </section>
 
-  <!-- FOOD TAB -->
-  <section class="tab hidden" data-tab="food">
+  <!-- ==================== INSIGHTS TAB ==================== -->
+  <section class="tab hidden" data-tab="insights">
     <header class="page-header">
-      <h1>饮食</h1>
-    </header>
-
-    <div class="card">
-      <div class="card-title">添加食物</div>
-      <div class="ai-row">
-        <button class="btn-ai" id="btn-voice" onclick="voiceFoodInput()">🎤 语音</button>
-        <button class="btn-ai" onclick="aiEstimateFood()">🤖 AI估算</button>
-        <button class="btn-ai" onclick="aiPhotoFood()">📸 拍照</button>
-      </div>
-      <div class="form-grid two-col">
-        <label>名称
-          <input type="text" id="food-name" placeholder="鸡胸肉 200g">
-        </label>
-        <label>热量 (kcal)
-          <input type="number" id="food-kcal" inputmode="numeric" placeholder="330">
-        </label>
-        <label>蛋白 (g)
-          <input type="number" id="food-protein" inputmode="decimal" step="0.1" placeholder="60">
-        </label>
-        <label>碳水 (g)
-          <input type="number" id="food-carbs" inputmode="decimal" step="0.1" placeholder="0">
-        </label>
-        <label>脂肪 (g)
-          <input type="number" id="food-fat" inputmode="decimal" step="0.1" placeholder="7">
-        </label>
-        <label>餐次
-          <select id="food-meal">
-            <option value="breakfast">早餐</option>
-            <option value="lunch">午餐</option>
-            <option value="dinner">晚餐</option>
-            <option value="snack">加餐/零食</option>
-          </select>
-        </label>
-      </div>
-      <button class="btn-primary block" onclick="addFood()">添加</button>
-    </div>
-
-    <div class="card">
-      <div class="food-date-nav">
-        <button class="date-nav-arrow" onclick="foodDateShift(-1)">‹</button>
-        <span id="food-view-date">今天</span>
-        <button class="date-nav-arrow" id="food-date-next" onclick="foodDateShift(1)" disabled>›</button>
-      </div>
-      <div id="food-list" class="list"></div>
-      <div class="totals" id="food-totals"></div>
-    </div>
-  </section>
-
-  <!-- EXERCISE TAB -->
-  <section class="tab hidden" data-tab="exercise">
-    <header class="page-header">
-      <h1>运动</h1>
-    </header>
-
-    <div class="card import-card">
-      <div class="card-title">从 Apple Health 导入</div>
-      <p class="muted small">用 iOS 快捷指令把今天的活动能量发到剪贴板，然后点下面的按钮粘贴。</p>
-      <div class="inline-form">
-        <button class="btn-secondary" onclick="pasteHealthData()">📋 粘贴 Health 数据</button>
-        <button class="btn-link" onclick="showTab('settings')">设置教程</button>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="card-title">手动添加</div>
-      <div class="form-grid two-col">
-        <label>类型
-          <input type="text" id="ex-type" placeholder="跑步 / 力量 / HIIT">
-        </label>
-        <label>时长 (分钟)
-          <input type="number" id="ex-duration" inputmode="numeric" placeholder="45">
-        </label>
-        <label>消耗 (kcal)
-          <input type="number" id="ex-kcal" inputmode="numeric" placeholder="400">
-        </label>
-        <label>备注
-          <input type="text" id="ex-note" placeholder="可选">
-        </label>
-      </div>
-      <button class="btn-primary block" onclick="addExercise()">添加</button>
-    </div>
-
-    <div class="card">
-      <div class="card-title">消耗趋势</div>
-      <div class="chart-tabs">
-        <button class="chip active" data-exrange="14" onclick="setExerciseRange(14, event)">14天</button>
-        <button class="chip" data-exrange="30" onclick="setExerciseRange(30, event)">30天</button>
-        <button class="chip" data-exrange="all" onclick="setExerciseRange('all', event)">全部</button>
-      </div>
-      <div id="exercise-chart" class="chart"></div>
-      <div class="chart-meta" id="exercise-chart-meta"></div>
-    </div>
-
-    <div class="card">
-      <div class="card-title">今日运动</div>
-      <div id="exercise-list" class="list"></div>
-      <div class="totals" id="exercise-totals"></div>
-    </div>
-  </section>
-
-  <!-- BODY TAB -->
-  <section class="tab hidden" data-tab="body">
-    <header class="page-header">
-      <h1>身材</h1>
+      <h1>洞察</h1>
     </header>
 
     <div class="card">
@@ -352,58 +372,7 @@
     </div>
   </section>
 
-  <!-- RECOMMEND TAB -->
-  <section class="tab hidden" data-tab="recommend">
-    <header class="page-header">
-      <h1>AI 推荐</h1>
-    </header>
-
-    <div class="card">
-      <div class="card-title">今日宏量缺口</div>
-      <div id="rec-gaps"></div>
-      <div class="muted small" id="rec-kcal" style="margin-top:10px"></div>
-    </div>
-
-    <div class="card">
-      <div class="card-title">饮食偏好</div>
-      <div id="pref-tags" class="pref-chips"></div>
-      <label class="form-label" style="margin-top:12px">
-        不喜欢 / 过敏
-        <input type="text" id="pref-disliked" placeholder="如：香菜、花生、辣椒" style="margin-top:6px">
-      </label>
-      <div id="pref-frequent" class="muted small" style="margin-top:8px"></div>
-      <button class="btn-link block" onclick="savePreferences()">保存偏好</button>
-    </div>
-
-    <div class="card">
-      <div class="card-title">选择推荐场景</div>
-      <div class="scenario-grid">
-        <button class="scenario-btn" onclick="aiRecommend('home')">
-          <span class="scenario-icon">🍳</span>
-          <span>自己做饭</span>
-        </button>
-        <button class="scenario-btn" onclick="aiRecommend('delivery')">
-          <span class="scenario-icon">🛵</span>
-          <span>点外卖</span>
-        </button>
-        <button class="scenario-btn" onclick="aiRecommend('convenience')">
-          <span class="scenario-icon">🏪</span>
-          <span>便利店</span>
-        </button>
-        <button class="scenario-btn" onclick="aiRecommend('snack')">
-          <span class="scenario-icon">🍎</span>
-          <span>加餐零食</span>
-        </button>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="card-title">推荐结果</div>
-      <div id="rec-result" class="muted small">↑ 选择上方场景，AI 将根据宏量缺口和饮食偏好生成推荐</div>
-    </div>
-  </section>
-
-  <!-- SETTINGS / MORE TAB -->
+  <!-- ==================== SETTINGS TAB ==================== -->
   <section class="tab hidden" data-tab="settings">
     <header class="page-header">
       <h1>更多</h1>
@@ -474,6 +443,17 @@
     <button class="btn-primary block" onclick="saveSettings()">保存设置</button>
 
     <div class="card">
+      <div class="card-title">🍽 饮食偏好</div>
+      <div id="pref-tags" class="pref-chips"></div>
+      <label class="form-label" style="margin-top:12px">
+        不喜欢 / 过敏
+        <input type="text" id="pref-disliked" placeholder="如：香菜、花生、辣椒" style="margin-top:6px">
+      </label>
+      <div id="pref-frequent" class="muted small" style="margin-top:8px"></div>
+      <button class="btn-link block" onclick="savePreferences()">保存偏好</button>
+    </div>
+
+    <div class="card">
       <div class="card-title">🤖 AI 助手 (OpenAI)</div>
       <label class="form-label">API Key
         <input type="password" id="set-api-key" placeholder="sk-..." autocomplete="off">
@@ -490,7 +470,7 @@
 
     <div class="card setup-card">
       <div class="card-title">📲 Apple Health 同步教程</div>
-      <p class="muted small">用 iOS 快捷指令把每天的活动能量自动复制到剪贴板，然后在「运动」页一键粘贴。</p>
+      <p class="muted small">用 iOS 快捷指令把每天的活动能量自动复制到剪贴板，然后在「记录 → 运动」页一键粘贴。</p>
       <ol class="setup-list">
         <li>打开 iOS「快捷指令」App，点右上角 +</li>
         <li>添加动作「获取健康样本」→ 类型选「活动能量」→ 范围「今天」</li>
@@ -524,31 +504,23 @@
 
 </main>
 
-<!-- Bottom navigation -->
+<!-- Bottom navigation (4 tabs) -->
 <nav class="bottom-nav" id="bottom-nav">
   <button class="nav-item active" onclick="showTab('today')" data-nav="today">
     <span class="nav-icon">●</span>
     <span class="nav-label">今日</span>
   </button>
-  <button class="nav-item" onclick="showTab('weight')" data-nav="weight">
-    <span class="nav-icon">⚖</span>
-    <span class="nav-label">体重</span>
+  <button class="nav-item" onclick="showTab('records')" data-nav="records">
+    <span class="nav-icon">📊</span>
+    <span class="nav-label">记录</span>
   </button>
-  <button class="nav-item" onclick="showTab('food')" data-nav="food">
-    <span class="nav-icon">🍽</span>
-    <span class="nav-label">饮食</span>
+  <button class="nav-item" onclick="showTab('insights')" data-nav="insights">
+    <span class="nav-icon">📈</span>
+    <span class="nav-label">洞察</span>
   </button>
-  <button class="nav-item" onclick="showTab('exercise')" data-nav="exercise">
-    <span class="nav-icon">🔥</span>
-    <span class="nav-label">运动</span>
-  </button>
-  <button class="nav-item" onclick="showTab('body')" data-nav="body">
-    <span class="nav-icon">📏</span>
-    <span class="nav-label">身材</span>
-  </button>
-  <button class="nav-item" onclick="showTab('recommend')" data-nav="recommend">
-    <span class="nav-icon">✨</span>
-    <span class="nav-label">推荐</span>
+  <button class="nav-item" onclick="showTab('settings')" data-nav="settings">
+    <span class="nav-icon">⚙</span>
+    <span class="nav-label">更多</span>
   </button>
 </nav>
 
@@ -562,6 +534,17 @@
     <div class="modal-context" id="ai-modal-context"></div>
     <div class="modal-body" id="ai-modal-body">
       <div class="modal-loading">正在生成…</div>
+    </div>
+  </div>
+</div>
+
+<!-- Custom Confirm Modal (replaces native confirm()) -->
+<div id="custom-modal" class="confirm-modal hidden">
+  <div class="confirm-modal-card">
+    <p id="custom-modal-msg"></p>
+    <div class="confirm-modal-actions">
+      <button class="btn-secondary" onclick="resolveCustomModal(false)">取消</button>
+      <button class="btn-danger" onclick="resolveCustomModal(true)">确定</button>
     </div>
   </div>
 </div>
