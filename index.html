@@ -74,6 +74,15 @@
       <button class="icon-btn" onclick="showTab('settings')" aria-label="设置">⚙</button>
     </header>
 
+    <!-- Smart AI input -->
+    <div class="smart-input-card">
+      <div class="smart-input-row">
+        <input type="text" id="smart-input" placeholder="记一笔… 两个鸡蛋 / 推荐午餐 / 体重95"
+               onkeydown="if(event.key==='Enter')handleSmartInput()">
+        <button class="smart-send" id="smart-send-btn" onclick="handleSmartInput()">→</button>
+      </div>
+    </div>
+
     <!-- Goal progress card -->
     <div class="card goal-card">
       <div class="goal-row">
@@ -233,6 +242,9 @@
 
     <!-- Food sub-section -->
     <div class="records-sub hidden" data-sub="food">
+      <!-- Quick-add frequent foods -->
+      <div id="quick-add-foods" class="quick-add-row"></div>
+
       <div class="card">
         <div class="card-title">添加食物</div>
         <div class="ai-row">
