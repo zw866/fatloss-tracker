@@ -181,6 +181,13 @@ function showTab(name) {
   document.querySelectorAll('.nav-item').forEach(n => {
     n.classList.toggle('active', n.dataset.nav === name);
   });
+  // Trigger entrance animation
+  const activeTab = document.querySelector(`.tab[data-tab="${name}"]`);
+  if (activeTab) {
+    activeTab.classList.remove('tab-enter');
+    void activeTab.offsetHeight; // force reflow
+    activeTab.classList.add('tab-enter');
+  }
   renderForTab(name);
   window.scrollTo({ top: 0, behavior: 'instant' });
 }
@@ -437,6 +444,65 @@ async function generateWeeklyReport() {
   } finally {
     _weeklyReporting = false;
   }
+}
+
+/* ============== Chart touch interaction ============== */
+
+function setupChartInteraction(container, points, svgW, formatter) {
+  if (!container || !points.length) return;
+
+  // Create or reuse tooltip & indicator
+  let tip = container.querySelector('.chart-tip');
+  let line = container.querySelector('.chart-indicator');
+  if (!tip) {
+    tip = document.createElement('div');
+    tip.className = 'chart-tip';
+    container.appendChild(tip);
+    line = document.createElement('div');
+    line.className = 'chart-indicator';
+    container.appendChild(line);
+    container.style.position = 'relative';
+  }
+
+  // Store data on container
+  container._pts = points;
+  container._svgW = svgW;
+  container._fmt = formatter;
+
+  // Bind events only once
+  if (container._bound) return;
+  container._bound = true;
+
+  const findNearest = (clientX) => {
+    const rect = container.getBoundingClientRect();
+    const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    const svgX = ratio * container._svgW;
+    let nearest = container._pts[0], minD = Infinity;
+    for (const p of container._pts) {
+      const d = Math.abs(p.x - svgX);
+      if (d < minD) { minD = d; nearest = p; }
+    }
+    return { point: nearest, pct: (nearest.x / container._svgW) * 100 };
+  };
+
+  const show = (clientX) => {
+    const { point, pct } = findNearest(clientX);
+    tip.textContent = container._fmt(point);
+    tip.style.left = pct + '%';
+    tip.classList.add('visible');
+    line.style.left = pct + '%';
+    line.classList.add('visible');
+  };
+  const hide = () => {
+    tip.classList.remove('visible');
+    line.classList.remove('visible');
+  };
+
+  container.addEventListener('touchstart', e => show(e.touches[0].clientX), { passive: true });
+  container.addEventListener('touchmove', e => { e.preventDefault(); show(e.touches[0].clientX); }, { passive: false });
+  container.addEventListener('touchend', hide);
+  container.addEventListener('mousemove', e => show(e.clientX));
+  container.addEventListener('mouseleave', hide);
 }
 
 /* ============== Onboarding ============== */
@@ -779,6 +845,9 @@ function drawWeightChart() {
   const last = data[data.length - 1];
   const change = (last.kg - first.kg).toFixed(1);
   meta.innerHTML = `<span>${data.length} 条记录</span><span>${change > 0 ? '+' : ''}${change} kg · ${data.length > 1 ? ((last.kg - first.kg) / (daysBetween(first.date, last.date) / 7 || 1)).toFixed(2) + ' kg/周' : ''}</span>`;
+
+  // Chart touch interaction
+  setupChartInteraction(container, points, W, p => `${fmtFullDate(p.date)}  ${p.kg} kg`);
 }
 
 /* ============== FOOD tab ============== */
@@ -971,6 +1040,14 @@ function drawExerciseChart() {
   const avgKcal = Math.round(kcals.reduce((a, b) => a + b, 0) / totalDays);
   const maxDay = data.reduce((a, b) => b.kcal > a.kcal ? b : a);
   meta.innerHTML = `<span>${totalDays} 天 · 日均 ${avgKcal} kcal</span><span>最高 ${Math.round(maxDay.kcal)} kcal (${fmtDate(maxDay.date)})</span>`;
+
+  // Chart touch interaction
+  const barPoints = data.map((d, i) => ({
+    x: pad.l + i * xStep + xStep / 2,
+    date: d.date,
+    kcal: d.kcal,
+  }));
+  setupChartInteraction(container, barPoints, W, p => `${fmtFullDate(p.date)}  ${p.kcal} kcal`);
 }
 
 function renderExercise() {
