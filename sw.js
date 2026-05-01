@@ -1,4 +1,4 @@
-const CACHE = 'fatloss-v2';
+const CACHE = 'fatloss-v4';
 const ASSETS = [
   './',
   './index.html',
@@ -25,16 +25,26 @@ self.addEventListener('activate', e => {
 
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
+  const url = new URL(e.request.url);
+
+  // HTML / JS / CSS：网络优先，失败才用缓存
+  if (url.origin === location.origin) {
+    e.respondWith(
+      fetch(e.request)
+        .then(resp => {
+          if (resp.ok) {
+            const copy = resp.clone();
+            caches.open(CACHE).then(c => c.put(e.request, copy));
+          }
+          return resp;
+        })
+        .catch(() => caches.match(e.request))
+    );
+    return;
+  }
+
+  // 其他资源走缓存优先
   e.respondWith(
-    caches.match(e.request).then(cached => {
-      if (cached) return cached;
-      return fetch(e.request).then(resp => {
-        const copy = resp.clone();
-        if (resp.ok && new URL(e.request.url).origin === location.origin) {
-          caches.open(CACHE).then(c => c.put(e.request, copy));
-        }
-        return resp;
-      }).catch(() => cached);
-    })
+    caches.match(e.request).then(cached => cached || fetch(e.request))
   );
 });
