@@ -241,6 +241,204 @@ function renderInsights() {
   renderBody();
 }
 
+/* ============== Streak system ============== */
+
+function calcStreak() {
+  const today = new Date();
+  let streak = 0;
+  for (let i = 0; i < 365; i++) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - i);
+    const iso = d.toISOString().slice(0, 10);
+    const logged = state.weights.some(w => w.date === iso)
+      || state.foods.some(f => f.date === iso)
+      || state.exercises.some(e => e.date === iso);
+    if (logged) streak++;
+    else break;
+  }
+  return streak;
+}
+
+function renderStreak() {
+  const badge = document.getElementById('streak-badge');
+  if (!badge) return;
+  const streak = calcStreak();
+  if (streak >= 2) {
+    badge.textContent = `🔥 ${streak} 天`;
+    badge.classList.remove('hidden');
+  } else {
+    badge.classList.add('hidden');
+  }
+}
+
+/* ============== Plateau detection ============== */
+
+function detectPlateau() {
+  const sorted = [...state.weights].sort((a, b) => a.date.localeCompare(b.date));
+  if (sorted.length < 4) return null;
+
+  // Get weights from last 21 days
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - 21);
+  const cutoffISO = cutoff.toISOString().slice(0, 10);
+  const recent = sorted.filter(w => w.date >= cutoffISO);
+
+  if (recent.length < 4) return null;
+
+  const span = daysBetween(recent[0].date, recent[recent.length - 1].date);
+  if (span < 10) return null;
+
+  const kgs = recent.map(w => w.kg);
+  const range = Math.max(...kgs) - Math.min(...kgs);
+  const avg = kgs.reduce((a, b) => a + b, 0) / kgs.length;
+
+  // Plateau: range < 1kg over 10+ days with 4+ data points
+  if (range < 1.0) {
+    return { days: span, avgWeight: avg.toFixed(1), range: range.toFixed(1), count: recent.length };
+  }
+  return null;
+}
+
+function renderPlateau() {
+  const alert = document.getElementById('plateau-alert');
+  if (!alert) return;
+  const p = detectPlateau();
+  if (p) {
+    document.getElementById('plateau-text').textContent =
+      `过去 ${p.days} 天内 ${p.count} 次称重，体重波动仅 ${p.range} kg（均值 ${p.avgWeight} kg）。可能进入平台期。`;
+    alert.classList.remove('hidden');
+  } else {
+    alert.classList.add('hidden');
+  }
+}
+
+let _plateauDiagnosing = false;
+
+async function aiDiagnosePlateau() {
+  if (_plateauDiagnosing) return;
+  _plateauDiagnosing = true;
+
+  const btn = document.getElementById('plateau-diag-btn');
+  const diagEl = document.getElementById('plateau-diagnosis');
+  btn.disabled = true;
+  btn.textContent = '分析中…';
+  diagEl.innerHTML = '<div class="modal-loading">AI 正在诊断…</div>';
+
+  try {
+    // Collect recent data for context
+    const days = [];
+    for (let i = 20; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const iso = d.toISOString().slice(0, 10);
+      const w = state.weights.find(x => x.date === iso);
+      const foods = state.foods.filter(f => f.date === iso);
+      const exs = state.exercises.filter(e => e.date === iso);
+      const fSum = sumFoods(foods);
+      const exKcal = sumExercises(exs);
+      if (w || foods.length || exs.length) {
+        days.push(`${iso}: ${w ? w.kg + 'kg' : '-'}, 摄入${fSum.kcal}kcal(P${fSum.p.toFixed(0)}), 运动${exKcal}kcal`);
+      }
+    }
+
+    const cw = currentWeight();
+    const tdee = cw ? calcTDEE(state.profile, cw) : 0;
+
+    const result = await callOpenAI({
+      messages: [
+        { role: 'system', content: '你是减脂专家。用户体重进入平台期。根据其近3周数据诊断可能原因并给出具体调整建议。分析维度：① 热量缺口是否真实（TDEE 可能高估）② 蛋白质是否充足 ③ 运动量/类型 ④ 代谢适应可能性。给 2-3 个具体可执行的建议。简洁有力，200字以内。用 emoji 装饰。' },
+        { role: 'user', content: `身体：${state.profile.sex === 'male' ? '男' : '女'}, ${state.profile.age}岁, ${state.profile.height}cm, TDEE约${tdee}kcal\n目标：${state.goal.goalWeight}kg, 日目标${state.goal.kcalTarget}kcal, 蛋白${state.goal.proteinTarget}g\n\n近期数据：\n${days.join('\n')}` },
+      ],
+    });
+
+    if (result) {
+      const html = escapeHtml(result)
+        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/\n/g, '<br>');
+      diagEl.innerHTML = `<div class="plateau-result">${html}</div>`;
+    } else {
+      diagEl.innerHTML = '<div class="muted small">诊断失败，请检查 API Key。</div>';
+    }
+  } catch (e) {
+    console.error(e);
+    diagEl.innerHTML = '<div class="muted small">诊断出错</div>';
+  } finally {
+    _plateauDiagnosing = false;
+    btn.disabled = false;
+    btn.textContent = 'AI 诊断';
+  }
+}
+
+/* ============== Weekly report ============== */
+
+let _weeklyReporting = false;
+
+async function generateWeeklyReport() {
+  if (_weeklyReporting) return;
+  _weeklyReporting = true;
+
+  const container = document.getElementById('weekly-report');
+  const btn = document.getElementById('weekly-report-btn');
+  if (btn) { btn.disabled = true; btn.textContent = '生成中…'; }
+
+  try {
+    const days = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const iso = d.toISOString().slice(0, 10);
+      const w = state.weights.find(x => x.date === iso);
+      const foods = state.foods.filter(f => f.date === iso);
+      const exs = state.exercises.filter(e => e.date === iso);
+      const fSum = sumFoods(foods);
+      const exKcal = sumExercises(exs);
+      days.push({
+        date: iso, weight: w?.kg || null,
+        kcal: Math.round(fSum.kcal), p: Math.round(fSum.p),
+        c: Math.round(fSum.c), f: Math.round(fSum.f),
+        ex: exKcal, logged: !!(w || foods.length || exs.length),
+      });
+    }
+
+    const loggedDays = days.filter(d => d.logged);
+    if (loggedDays.length < 2) {
+      container.innerHTML = '<p class="muted small">数据不足，至少需要 2 天记录才能生成周报。</p>' +
+        '<button class="btn-primary block" id="weekly-report-btn" onclick="generateWeeklyReport()">生成周报</button>';
+      return;
+    }
+
+    const ctx = days.map(d =>
+      `${d.date}: 体重${d.weight || '未记'}kg, 摄入${d.kcal}kcal(P${d.p}C${d.c}F${d.f}), 运动${d.ex}kcal`
+    ).join('\n');
+
+    container.innerHTML = '<div class="modal-loading">AI 正在生成周报…</div>';
+
+    const result = await callOpenAI({
+      messages: [
+        { role: 'system', content: '你是专业减脂教练。根据过去7天数据生成简洁周报。包含：① 体重趋势(涨/降/持平) ② 饮食评估(热量和蛋白达标率) ③ 运动情况 ④ 本周亮点 ⑤ 下周1-2个具体建议。简洁有力，200字以内。适当用 emoji。' },
+        { role: 'user', content: `目标：${state.goal.goalWeight}kg, 日目标${state.goal.kcalTarget}kcal, 蛋白${state.goal.proteinTarget}g\n\n${ctx}` },
+      ],
+    });
+
+    if (result) {
+      const html = escapeHtml(result)
+        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/\n/g, '<br>');
+      container.innerHTML = `<div class="weekly-report-text">${html}</div>
+        <button class="btn-link block" style="margin-top:12px;border-top:1px solid #f1f5f9;padding-top:12px" onclick="generateWeeklyReport()">↻ 重新生成</button>`;
+    } else {
+      container.innerHTML = '<p class="muted small">生成失败，请检查 API Key。</p>' +
+        '<button class="btn-primary block" id="weekly-report-btn" onclick="generateWeeklyReport()">重试</button>';
+    }
+  } catch (e) {
+    console.error(e);
+    container.innerHTML = '<p class="muted small">生成出错</p>' +
+      '<button class="btn-primary block" id="weekly-report-btn" onclick="generateWeeklyReport()">重试</button>';
+  } finally {
+    _weeklyReporting = false;
+  }
+}
+
 /* ============== Onboarding ============== */
 
 function startOnboarding() {
@@ -378,6 +576,10 @@ function renderToday() {
 
   // Meal time prompt
   checkMealPrompt();
+
+  // Streak & plateau
+  renderStreak();
+  renderPlateau();
 }
 
 function yesterdaysWeight() {
@@ -1826,3 +2028,5 @@ window.aiRecommend = aiRecommend;
 window.handleSmartInput = handleSmartInput;
 window.quickAddFood = quickAddFood;
 window.addRecFood = addRecFood;
+window.aiDiagnosePlateau = aiDiagnosePlateau;
+window.generateWeeklyReport = generateWeeklyReport;

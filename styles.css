@@ -309,6 +309,66 @@ select {
   text-align: center;
 }
 
+/* ============== Streak badge ============== */
+.header-top-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.streak-badge {
+  font-size: 12px;
+  font-weight: 700;
+  color: #f97316;
+  background: #fff7ed;
+  padding: 2px 8px;
+  border-radius: 999px;
+  letter-spacing: -0.3px;
+}
+
+/* ============== Plateau alert ============== */
+.plateau-card {
+  background: linear-gradient(135deg, #fffbeb, #ffffff);
+  border: 1px solid rgba(245, 158, 11, 0.15);
+}
+.plateau-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+.plateau-header > div {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.plateau-icon { font-size: 16px; }
+.plateau-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #b45309;
+}
+.plateau-action {
+  height: 32px !important;
+  font-size: 13px !important;
+  padding: 0 12px !important;
+}
+.plateau-result {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(245, 158, 11, 0.15);
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+/* ============== Weekly report ============== */
+.weekly-report-card {
+  background: linear-gradient(135deg, #eff6ff, #ffffff);
+}
+.weekly-report-text {
+  font-size: 14px;
+  line-height: 1.75;
+}
+
 /* ============== Tip card ============== */
 .tip-card {
   background: linear-gradient(135deg, #fefce8, #ffffff);

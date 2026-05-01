@@ -68,7 +68,10 @@
   <section class="tab" data-tab="today">
     <header class="page-header">
       <div>
-        <div class="muted small" id="today-date">今天</div>
+        <div class="header-top-row">
+          <span class="muted small" id="today-date">今天</span>
+          <span class="streak-badge hidden" id="streak-badge"></span>
+        </div>
         <h1>今日</h1>
       </div>
       <button class="icon-btn" onclick="showTab('settings')" aria-label="设置">⚙</button>
@@ -104,6 +107,19 @@
         <span class="muted" id="goal-progress-text">已完成 0%</span>
         <span class="muted" id="goal-pace">—</span>
       </div>
+    </div>
+
+    <!-- Plateau alert (conditional) -->
+    <div id="plateau-alert" class="card plateau-card hidden">
+      <div class="plateau-header">
+        <div>
+          <span class="plateau-icon">⚠️</span>
+          <span class="plateau-title">体重平台期</span>
+        </div>
+        <button class="btn-link plateau-action" id="plateau-diag-btn" onclick="aiDiagnosePlateau()">AI 诊断</button>
+      </div>
+      <p class="muted small" id="plateau-text"></p>
+      <div id="plateau-diagnosis"></div>
     </div>
 
     <!-- Quick stats grid -->
@@ -345,6 +361,15 @@
     <header class="page-header">
       <h1>洞察</h1>
     </header>
+
+    <!-- Weekly report -->
+    <div class="card weekly-report-card">
+      <div class="card-title">📊 本周报告</div>
+      <div id="weekly-report">
+        <p class="muted small">基于过去 7 天的体重、饮食和运动数据生成 AI 分析报告。</p>
+        <button class="btn-primary block" id="weekly-report-btn" onclick="generateWeeklyReport()">生成周报</button>
+      </div>
+    </div>
 
     <div class="card">
       <div class="card-title">体围记录</div>
