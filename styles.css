@@ -242,12 +242,13 @@ select {
 }
 
 /* ============== Chart ============== */
-.chart-tabs {
+.chart-tabs, .mode-row {
   display: flex;
   gap: 6px;
   margin-bottom: 12px;
   flex-wrap: wrap;
 }
+.mode-chip { flex: 1; min-width: 80px; }
 .chip {
   padding: 6px 12px;
   border-radius: 999px;
@@ -507,6 +508,29 @@ select {
   margin-bottom: 4px;
 }
 .onboarding-card p { margin-bottom: 16px; }
+
+.ob-mode-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.ob-mode-chip {
+  flex: 1;
+  padding: 12px 6px;
+  border: 2px solid #e5e7eb;
+  background: #fff;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+  text-align: center;
+}
+.ob-mode-chip.active {
+  border-color: #10b981;
+  background: #ecfdf5;
+}
+.ob-mode-emoji { font-size: 24px; line-height: 1; margin-bottom: 4px; }
+.ob-mode-name { font-weight: 600; font-size: 14px; }
+.ob-mode-desc { font-size: 11px; color: #6b7280; margin-top: 2px; }
 
 /* ============== AI buttons ============== */
 .ai-row {

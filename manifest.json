@@ -1,7 +1,7 @@
 {
-  "name": "减脂 Tracker",
-  "short_name": "减脂",
-  "description": "本地减脂追踪 - 体重、热量、宏量、运动、身材",
+  "name": "Body Tracker",
+  "short_name": "Body",
+  "description": "本地体态追踪 - 减脂 / 增肌 / 维持，体重、热量、宏量、运动、身材",
   "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#f5f7fa",

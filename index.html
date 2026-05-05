@@ -6,20 +6,38 @@
   <meta name="theme-color" content="#10b981">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <meta name="apple-mobile-web-app-title" content="减脂">
+  <meta name="apple-mobile-web-app-title" content="Body Tracker">
   <link rel="manifest" href="manifest.json">
   <link rel="apple-touch-icon" href="icon-192.svg">
   <link rel="icon" href="icon-192.svg">
   <link rel="stylesheet" href="styles.css">
-  <title>减脂 Tracker</title>
+  <title>Body Tracker</title>
 </head>
 <body>
 
 <!-- Onboarding overlay -->
 <div id="onboarding" class="onboarding hidden">
   <div class="onboarding-card">
-    <h2>欢迎，开始你的减脂旅程</h2>
+    <h2>欢迎，先选个目标</h2>
     <p class="muted">填一次基础数据，之后就能直接开始记录。</p>
+
+    <div class="ob-mode-row">
+      <button type="button" class="ob-mode-chip" data-mode="cut" onclick="selectOnboardingMode('cut')">
+        <div class="ob-mode-emoji">🔥</div>
+        <div class="ob-mode-name">减脂</div>
+        <div class="ob-mode-desc">缺口 500 kcal</div>
+      </button>
+      <button type="button" class="ob-mode-chip" data-mode="bulk" onclick="selectOnboardingMode('bulk')">
+        <div class="ob-mode-emoji">💪</div>
+        <div class="ob-mode-name">增肌</div>
+        <div class="ob-mode-desc">盈余 300 kcal</div>
+      </button>
+      <button type="button" class="ob-mode-chip" data-mode="maintain" onclick="selectOnboardingMode('maintain')">
+        <div class="ob-mode-emoji">⚖️</div>
+        <div class="ob-mode-name">维持</div>
+        <div class="ob-mode-desc">±0 kcal</div>
+      </button>
+    </div>
 
     <div class="form-grid">
       <label>性别
@@ -35,13 +53,13 @@
         <input type="number" id="ob-height" inputmode="decimal" placeholder="176">
       </label>
       <label>当前体重 (kg)
-        <input type="number" id="ob-weight" inputmode="decimal" step="0.1" placeholder="96">
+        <input type="number" id="ob-weight" inputmode="decimal" step="0.1" placeholder="76">
       </label>
       <label>起始体重 (kg)
-        <input type="number" id="ob-start-weight" inputmode="decimal" step="0.1" placeholder="109">
+        <input type="number" id="ob-start-weight" inputmode="decimal" step="0.1" placeholder="76">
       </label>
-      <label>目标体重 (kg)
-        <input type="number" id="ob-goal-weight" inputmode="decimal" step="0.1" placeholder="80">
+      <label><span id="ob-goal-label">目标体重</span> (kg)
+        <input type="number" id="ob-goal-weight" inputmode="decimal" step="0.1" placeholder="70">
       </label>
       <label>目标日期
         <input type="date" id="ob-goal-date">
@@ -144,7 +162,7 @@
       </div>
       <div class="card stat-card deficit">
         <div class="stat-icon">📉</div>
-        <div class="stat-label">今日缺口</div>
+        <div class="stat-label" id="stat-deficit-label">今日缺口</div>
         <div class="stat-value" id="stat-deficit">—</div>
         <div class="stat-delta" id="stat-deficit-meta">TDEE —</div>
       </div>
@@ -443,12 +461,22 @@
     </div>
 
     <div class="card">
+      <div class="card-title">目标模式</div>
+      <div class="mode-row">
+        <button class="chip mode-chip" data-mode="cut" onclick="setMode('cut')">减脂</button>
+        <button class="chip mode-chip" data-mode="bulk" onclick="setMode('bulk')">增肌</button>
+        <button class="chip mode-chip" data-mode="maintain" onclick="setMode('maintain')">维持</button>
+      </div>
+      <div id="mode-hint" class="muted small" style="margin-top:8px"></div>
+    </div>
+
+    <div class="card">
       <div class="card-title">目标</div>
       <div class="form-grid two-col">
         <label>起始体重 (kg)
           <input type="number" id="set-start" inputmode="decimal" step="0.1">
         </label>
-        <label>目标体重 (kg)
+        <label><span id="set-goal-label">目标体重</span> (kg)
           <input type="number" id="set-goal" inputmode="decimal" step="0.1">
         </label>
         <label>目标日期
@@ -474,7 +502,10 @@
           <input type="number" id="set-f-target" inputmode="numeric">
         </label>
       </div>
-      <button class="btn-link block" onclick="recalcMacroTargets()">↻ 按推荐比例自动算（蛋白2g/kg）</button>
+      <label style="margin-top:8px">蛋白质系数 (g/kg)
+        <input type="number" id="set-protein-perkg" inputmode="decimal" step="0.1" min="1.2" max="3.0">
+      </label>
+      <button class="btn-link block" onclick="recalcMacroTargets()">↻ 按当前模式自动算宏量</button>
     </div>
 
     <button class="btn-primary block" onclick="saveSettings()">保存设置</button>

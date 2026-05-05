@@ -1,8 +1,14 @@
 /* ===========================================================
-   减脂 Tracker - 全部本地存储 (localStorage)
+   Body Tracker - 全部本地存储 (localStorage)
    =========================================================== */
 
 const STORAGE_KEY = 'fatloss-tracker-v1';
+
+const MODE_CONFIG = {
+  cut:      { kcalDelta: -500, proteinPerKg: 2.0, fatPct: 0.25, weeklyKg: -0.5, label: '减脂' },
+  bulk:     { kcalDelta: +300, proteinPerKg: 1.8, fatPct: 0.20, weeklyKg: +0.3, label: '增肌' },
+  maintain: { kcalDelta: 0,    proteinPerKg: 1.6, fatPct: 0.25, weeklyKg: 0,    label: '维持' },
+};
 
 const defaultState = {
   profile: {
@@ -12,6 +18,8 @@ const defaultState = {
     activity: 1.725,
   },
   goal: {
+    mode: 'cut',
+    proteinPerKg: 2.0,
     startWeight: null,
     goalWeight: null,
     goalDate: null,
@@ -46,6 +54,10 @@ function loadState() {
     const parsed = JSON.parse(raw);
     const merged = Object.assign(structuredClone(defaultState), parsed);
     merged.aiPrefs = Object.assign(structuredClone(defaultState.aiPrefs), parsed.aiPrefs || {});
+    merged.goal = Object.assign(structuredClone(defaultState.goal), parsed.goal || {});
+    merged.profile = Object.assign(structuredClone(defaultState.profile), parsed.profile || {});
+    if (!MODE_CONFIG[merged.goal.mode]) merged.goal.mode = 'cut';
+    if (!merged.goal.proteinPerKg) merged.goal.proteinPerKg = MODE_CONFIG[merged.goal.mode].proteinPerKg;
     return merged;
   } catch (e) {
     console.error('loadState failed', e);
@@ -104,17 +116,23 @@ function currentWeight() {
   const sorted = [...state.weights].sort((a, b) => b.date.localeCompare(a.date));
   return sorted[0].kg;
 }
-function recommendedKcal(tdee) {
-  // 850 kcal deficit but not below ~1500 for men, ~1200 for women
-  const min = state.profile.sex === 'male' ? 1500 : 1200;
-  return Math.max(tdee - 850, min);
+function recommendedKcal(tdee, mode = 'cut') {
+  const cfg = MODE_CONFIG[mode] || MODE_CONFIG.cut;
+  if (mode === 'cut') {
+    const min = state.profile.sex === 'male' ? 1500 : 1200;
+    return Math.max(tdee - 850, min);
+  }
+  return Math.round(tdee + cfg.kcalDelta);
 }
-function recommendedMacros(weight, kcalTarget) {
-  const protein = Math.round(weight * 2);
-  const fatKcal = kcalTarget * 0.25;
-  const fat = Math.round(fatKcal / 9);
+function recommendedMacros(weight, kcalTarget, mode = 'cut', proteinPerKg = null) {
+  const cfg = MODE_CONFIG[mode] || MODE_CONFIG.cut;
+  const ppk = proteinPerKg || cfg.proteinPerKg;
+  const protein = Math.round(weight * ppk);
+  const minFat = Math.round(weight * 0.6);
+  const fatFromPct = Math.round((kcalTarget * cfg.fatPct) / 9);
+  const fat = Math.max(fatFromPct, minFat);
   const carbsKcal = kcalTarget - protein * 4 - fat * 9;
-  const carbs = Math.max(Math.round(carbsKcal / 4), 0);
+  const carbs = Math.max(Math.round(carbsKcal / 4), 100);
   return { protein, carbs, fat };
 }
 
@@ -351,10 +369,16 @@ async function aiDiagnosePlateau() {
     const cw = currentWeight();
     const tdee = cw ? calcTDEE(state.profile, cw) : 0;
 
+    const mode = state.goal.mode || 'cut';
+    const sysPrompts = {
+      cut: '你是减脂专家。用户体重进入平台期。根据其近3周数据诊断可能原因并给出具体调整建议。分析维度：① 热量缺口是否真实（TDEE 可能高估）② 蛋白质是否充足 ③ 运动量/类型 ④ 代谢适应可能性。给 2-3 个具体可执行的建议。简洁有力，200字以内。用 emoji 装饰。',
+      bulk: '你是增肌教练。用户体重停滞或上涨过慢。根据其近3周数据诊断原因并给出建议。分析维度：① 热量盈余是否真实达到（TDEE 可能低估）② 蛋白质是否够（每公斤体重 1.6-2g）③ 训练强度和容量是否够 ④ 碳水量是否支持训练。给 2-3 个具体可执行的建议。简洁有力，200字以内。用 emoji 装饰。',
+      maintain: '你是体态教练。用户在维持期，体重出现明显波动。诊断原因并给建议。分析维度：① 热量是否真的接近 TDEE ② 蛋白质摄入 ③ 训练一致性 ④ 是否需要小调整。给 2-3 个建议。简洁有力，200字以内。用 emoji 装饰。',
+    };
     const result = await callOpenAI({
       messages: [
-        { role: 'system', content: '你是减脂专家。用户体重进入平台期。根据其近3周数据诊断可能原因并给出具体调整建议。分析维度：① 热量缺口是否真实（TDEE 可能高估）② 蛋白质是否充足 ③ 运动量/类型 ④ 代谢适应可能性。给 2-3 个具体可执行的建议。简洁有力，200字以内。用 emoji 装饰。' },
-        { role: 'user', content: `身体：${state.profile.sex === 'male' ? '男' : '女'}, ${state.profile.age}岁, ${state.profile.height}cm, TDEE约${tdee}kcal\n目标：${state.goal.goalWeight}kg, 日目标${state.goal.kcalTarget}kcal, 蛋白${state.goal.proteinTarget}g\n\n近期数据：\n${days.join('\n')}` },
+        { role: 'system', content: sysPrompts[mode] || sysPrompts.cut },
+        { role: 'user', content: `模式：${MODE_CONFIG[mode].label}\n身体：${state.profile.sex === 'male' ? '男' : '女'}, ${state.profile.age}岁, ${state.profile.height}cm, TDEE约${tdee}kcal\n目标：${state.goal.goalWeight}kg, 日目标${state.goal.kcalTarget}kcal, 蛋白${state.goal.proteinTarget}g\n\n近期数据：\n${days.join('\n')}` },
       ],
     });
 
@@ -420,10 +444,16 @@ async function generateWeeklyReport() {
 
     container.innerHTML = '<div class="modal-loading">AI 正在生成周报…</div>';
 
+    const wkMode = state.goal.mode || 'cut';
+    const wkRoles = {
+      cut: '你是专业减脂教练。',
+      bulk: '你是专业增肌教练。',
+      maintain: '你是专业体态教练。',
+    };
     const result = await callOpenAI({
       messages: [
-        { role: 'system', content: '你是专业减脂教练。根据过去7天数据生成简洁周报。包含：① 体重趋势(涨/降/持平) ② 饮食评估(热量和蛋白达标率) ③ 运动情况 ④ 本周亮点 ⑤ 下周1-2个具体建议。简洁有力，200字以内。适当用 emoji。' },
-        { role: 'user', content: `目标：${state.goal.goalWeight}kg, 日目标${state.goal.kcalTarget}kcal, 蛋白${state.goal.proteinTarget}g\n\n${ctx}` },
+        { role: 'system', content: `${wkRoles[wkMode]}根据过去7天数据生成简洁周报。包含：① 体重趋势(涨/降/持平) ② 饮食评估(热量和蛋白达标率) ③ 运动情况 ④ 本周亮点 ⑤ 下周1-2个具体建议。简洁有力，200字以内。适当用 emoji。` },
+        { role: 'user', content: `模式：${MODE_CONFIG[wkMode].label}\n目标：${state.goal.goalWeight}kg, 日目标${state.goal.kcalTarget}kcal, 蛋白${state.goal.proteinTarget}g\n\n${ctx}` },
       ],
     });
 
@@ -513,9 +543,24 @@ function startOnboarding() {
   const prefDate = new Date();
   prefDate.setMonth(prefDate.getMonth() + 3);
   document.getElementById('ob-goal-date').value = prefDate.toISOString().slice(0, 10);
+  state.goal.mode = null; // force selection
+}
+
+function selectOnboardingMode(mode) {
+  if (!MODE_CONFIG[mode]) return;
+  state.goal.mode = mode;
+  document.querySelectorAll('.ob-mode-chip').forEach(c => {
+    c.classList.toggle('active', c.dataset.mode === mode);
+  });
+  const labelEl = document.getElementById('ob-goal-label');
+  if (labelEl) labelEl.textContent = mode === 'maintain' ? '维持体重' : '目标体重';
 }
 
 function finishOnboarding() {
+  if (!state.goal.mode) {
+    toast('先选一个目标模式');
+    return;
+  }
   const sex = document.getElementById('ob-sex').value;
   const age = +document.getElementById('ob-age').value;
   const height = +document.getElementById('ob-height').value;
@@ -527,6 +572,17 @@ function finishOnboarding() {
 
   if (!age || !height || !weight || !goalWeight || !goalDate) {
     toast('请填完所有必填项');
+    return;
+  }
+
+  // Validate goal direction matches mode
+  const mode = state.goal.mode;
+  if (mode === 'cut' && goalWeight >= startWeight) {
+    toast('减脂模式：目标体重应小于起始体重');
+    return;
+  }
+  if (mode === 'bulk' && goalWeight <= startWeight) {
+    toast('增肌模式：目标体重应大于起始体重');
     return;
   }
 
@@ -542,8 +598,9 @@ function finishOnboarding() {
 
   // Calc kcal & macro targets
   const tdee = calcTDEE(state.profile, weight);
-  state.goal.kcalTarget = recommendedKcal(tdee);
-  const macros = recommendedMacros(weight, state.goal.kcalTarget);
+  state.goal.proteinPerKg = state.goal.proteinPerKg || MODE_CONFIG[mode].proteinPerKg;
+  state.goal.kcalTarget = recommendedKcal(tdee, mode);
+  const macros = recommendedMacros(weight, state.goal.kcalTarget, mode, state.goal.proteinPerKg);
   state.goal.proteinTarget = macros.protein;
   state.goal.carbsTarget = macros.carbs;
   state.goal.fatTarget = macros.fat;
@@ -565,26 +622,31 @@ function renderToday() {
 
   // Goal card
   if (cw != null && goal.goalWeight != null) {
-    const remaining = (cw - goal.goalWeight).toFixed(1);
-    document.getElementById('goal-remaining').textContent = remaining > 0 ? remaining : '🎉';
+    const mode = goal.mode || 'cut';
+    const isBulk = mode === 'bulk';
+    const diff = goal.goalWeight - cw;
+    const reached = isBulk ? diff <= 0 : diff >= 0;
+    document.getElementById('goal-remaining').textContent = reached ? '🎉' : Math.abs(diff).toFixed(1);
     document.getElementById('goal-start').textContent = goal.startWeight ? `${goal.startWeight} kg` : '—';
     document.getElementById('goal-target').textContent = `${goal.goalWeight} kg`;
     document.getElementById('goal-date').textContent = goal.goalDate ? fmtFullDate(goal.goalDate).replace(/周./, '') : '—';
 
-    if (goal.startWeight && goal.startWeight > goal.goalWeight) {
-      const totalToLose = goal.startWeight - goal.goalWeight;
-      const lostSoFar = goal.startWeight - cw;
-      const pct = Math.max(0, Math.min(100, (lostSoFar / totalToLose) * 100));
+    if (goal.startWeight && goal.startWeight !== goal.goalWeight) {
+      const total = Math.abs(goal.goalWeight - goal.startWeight);
+      const done = isBulk ? cw - goal.startWeight : goal.startWeight - cw;
+      const pct = Math.max(0, Math.min(100, (done / total) * 100));
       document.getElementById('goal-progress-fill').style.width = pct + '%';
-      document.getElementById('goal-progress-text').textContent = `已完成 ${pct.toFixed(0)}% (-${lostSoFar.toFixed(1)} kg)`;
+      const sign = isBulk ? '+' : '-';
+      document.getElementById('goal-progress-text').textContent = `已完成 ${pct.toFixed(0)}% (${sign}${Math.abs(done).toFixed(1)} kg)`;
     }
 
     if (goal.goalDate) {
       const days = daysBetween(todayISO(), goal.goalDate);
-      const need = cw - goal.goalWeight;
+      const need = isBulk ? goal.goalWeight - cw : cw - goal.goalWeight;
       if (days > 0 && need > 0) {
         const perWeek = (need / (days / 7)).toFixed(2);
-        document.getElementById('goal-pace').textContent = `还剩 ${days} 天 · 需 ${perWeek} kg/周`;
+        const sign = isBulk ? '+' : '';
+        document.getElementById('goal-pace').textContent = `还剩 ${days} 天 · 需 ${sign}${perWeek} kg/周`;
       } else if (days <= 0) {
         document.getElementById('goal-pace').textContent = `已超过目标日期`;
       } else {
@@ -611,16 +673,26 @@ function renderToday() {
   document.getElementById('stat-exercise').textContent = exKcal;
   document.getElementById('stat-exercise-meta').textContent = `${todaysExercises().length} 项`;
 
+  const mode = goal.mode || 'cut';
+  const labelEl = document.getElementById('stat-deficit-label');
+  if (labelEl) labelEl.textContent = mode === 'bulk' ? '今日盈余' : mode === 'maintain' ? '热量平衡' : '今日缺口';
+
   if (cw != null && goal.kcalTarget) {
     const tdee = calcTDEE(state.profile, cw);
     if (fSum.kcal === 0 && exKcal === 0) {
       document.getElementById('stat-deficit').textContent = '—';
       document.getElementById('stat-deficit-meta').textContent = `TDEE ${tdee}`;
     } else {
-      const deficit = tdee + exKcal - fSum.kcal;
-      const sign = deficit >= 0 ? '+' : '';
-      document.getElementById('stat-deficit').textContent = sign + Math.round(deficit);
-      document.getElementById('stat-deficit-meta').textContent = `TDEE ${tdee} · ${deficit >= 0 ? '缺口' : '盈余'}`;
+      const balance = tdee + exKcal - fSum.kcal;
+      const display = mode === 'bulk' ? -balance : balance;
+      const sign = display >= 0 ? '+' : '';
+      document.getElementById('stat-deficit').textContent = sign + Math.round(display);
+      const tag = mode === 'bulk'
+        ? (balance < 0 ? '盈余' : '不足')
+        : mode === 'maintain'
+        ? (Math.abs(balance) < 100 ? '平衡' : balance > 0 ? '缺口' : '盈余')
+        : (balance >= 0 ? '缺口' : '盈余');
+      document.getElementById('stat-deficit-meta').textContent = `TDEE ${tdee} · ${tag}`;
     }
   } else {
     document.getElementById('stat-deficit').textContent = '—';
@@ -668,18 +740,41 @@ function setMacroBar(key, val, target) {
 
 function generateTip(cw, fSum, exKcal) {
   const goal = state.goal;
+  const mode = goal.mode || 'cut';
   if (!cw) return '今天还没记体重，去「记录 → 体重」加一条。';
-  if (!goal.kcalTarget) return '在「更多」里设个目标，今天就有缺口数据可看了。';
+  if (!goal.kcalTarget) return '在「更多」里设个目标，今天就有数据可看了。';
 
   const tdee = calcTDEE(state.profile, cw);
-  const deficit = tdee + exKcal - fSum.kcal;
+  const balance = tdee + exKcal - fSum.kcal;
+  const proteinShort = goal.proteinTarget && fSum.p < goal.proteinTarget * 0.8
+    ? `蛋白吃得有点少，距目标还差 ${Math.round(goal.proteinTarget - fSum.p)} g。`
+    : null;
 
   if (fSum.kcal === 0) return '今天还没记饮食，去「记录 → 饮食」加一餐 🍽';
-  if (deficit < 0) return `今天热量超了 ${Math.abs(Math.round(deficit))} kcal，明天补回来。`;
-  if (deficit < 300) return `缺口偏小 (${Math.round(deficit)} kcal)，可以加点低强度有氧。`;
-  if (deficit > 1200) return `缺口偏大 (${Math.round(deficit)} kcal)，注意别长期这样，容易代谢适应。`;
-  if (goal.proteinTarget && fSum.p < goal.proteinTarget * 0.8) return `蛋白吃得有点少，距目标还差 ${Math.round(goal.proteinTarget - fSum.p)} g。`;
-  return `今天缺口 ${Math.round(deficit)} kcal，节奏不错，继续。`;
+
+  if (mode === 'bulk') {
+    const surplus = -balance;
+    if (surplus < -200) return `今天还差 ${Math.abs(Math.round(surplus))} kcal 才到盈余，要再吃点 💪`;
+    if (surplus < 100) return `刚到维持线，再加点碳水会有更好的合成效果。`;
+    if (surplus > 600) return `盈余偏大 (${Math.round(surplus)} kcal)，长太快容易囤脂肪。`;
+    if (proteinShort) return proteinShort;
+    return `今天盈余 ${Math.round(surplus)} kcal，给增肌的好节奏 🔥`;
+  }
+
+  if (mode === 'maintain') {
+    if (Math.abs(balance) < 150) return `热量平衡，维持得不错。`;
+    if (balance > 300) return `今天比 TDEE 少吃了 ${Math.round(balance)} kcal，注意别滑向减脂。`;
+    if (balance < -300) return `今天超了 ${Math.abs(Math.round(balance))} kcal，明天少点。`;
+    if (proteinShort) return proteinShort;
+    return `维持节奏，继续。`;
+  }
+
+  // cut
+  if (balance < 0) return `今天热量超了 ${Math.abs(Math.round(balance))} kcal，明天补回来。`;
+  if (balance < 300) return `缺口偏小 (${Math.round(balance)} kcal)，可以加点低强度有氧。`;
+  if (balance > 1200) return `缺口偏大 (${Math.round(balance)} kcal)，注意别长期这样，容易代谢适应。`;
+  if (proteinShort) return proteinShort;
+  return `今天缺口 ${Math.round(balance)} kcal，节奏不错，继续。`;
 }
 
 /* ============== WEIGHT tab ============== */
@@ -1274,6 +1369,9 @@ function renderSettings() {
   document.getElementById('set-p-target').value = g.proteinTarget || '';
   document.getElementById('set-c-target').value = g.carbsTarget || '';
   document.getElementById('set-f-target').value = g.fatTarget || '';
+  const ppkInput = document.getElementById('set-protein-perkg');
+  if (ppkInput) ppkInput.value = g.proteinPerKg || MODE_CONFIG[g.mode || 'cut'].proteinPerKg;
+  renderModeChips();
   // API key field shows masked indicator if already set
   const apiKey = getApiKey();
   const keyInput = document.getElementById('set-api-key');
@@ -1303,15 +1401,57 @@ function saveSettings() {
   state.goal.proteinTarget = parseInt(document.getElementById('set-p-target').value) || state.goal.proteinTarget;
   state.goal.carbsTarget = parseInt(document.getElementById('set-c-target').value) || state.goal.carbsTarget;
   state.goal.fatTarget = parseInt(document.getElementById('set-f-target').value) || state.goal.fatTarget;
+  const ppkVal = parseFloat(document.getElementById('set-protein-perkg').value);
+  if (ppkVal && ppkVal >= 1.2 && ppkVal <= 3.0) state.goal.proteinPerKg = ppkVal;
   saveState();
   toast('已保存 ✓');
+}
+
+function renderModeChips() {
+  const mode = state.goal.mode || 'cut';
+  document.querySelectorAll('.mode-chip').forEach(c => {
+    c.classList.toggle('active', c.dataset.mode === mode);
+  });
+  const cfg = MODE_CONFIG[mode];
+  const hint = document.getElementById('mode-hint');
+  if (hint) {
+    const sign = cfg.kcalDelta > 0 ? '+' : '';
+    hint.textContent = `${cfg.label}：每日 TDEE ${sign}${cfg.kcalDelta} kcal · 蛋白 ${cfg.proteinPerKg} g/kg · 每周约 ${cfg.weeklyKg > 0 ? '+' : ''}${cfg.weeklyKg} kg`;
+  }
+  const labelEl = document.getElementById('set-goal-label');
+  if (labelEl) labelEl.textContent = mode === 'maintain' ? '当前体重' : '目标体重';
+}
+
+function setMode(mode) {
+  if (!MODE_CONFIG[mode]) return;
+  if (state.goal.mode === mode) return;
+  const cw = currentWeight();
+  if (cw && state.goal.kcalTarget) {
+    const tdee = calcTDEE(state.profile, cw);
+    const newKcal = recommendedKcal(tdee, mode);
+    if (!confirm(`切换到「${MODE_CONFIG[mode].label}」模式？\n\n热量目标会从 ${state.goal.kcalTarget} 调整为 ${newKcal} kcal\n蛋白质系数：${MODE_CONFIG[mode].proteinPerKg} g/kg`)) return;
+    state.goal.mode = mode;
+    state.goal.proteinPerKg = MODE_CONFIG[mode].proteinPerKg;
+    state.goal.kcalTarget = newKcal;
+    const m = recommendedMacros(cw, newKcal, mode, state.goal.proteinPerKg);
+    state.goal.proteinTarget = m.protein;
+    state.goal.carbsTarget = m.carbs;
+    state.goal.fatTarget = m.fat;
+  } else {
+    state.goal.mode = mode;
+    state.goal.proteinPerKg = MODE_CONFIG[mode].proteinPerKg;
+  }
+  saveState();
+  renderSettings();
+  toast(`已切换到${MODE_CONFIG[mode].label}模式`);
 }
 
 function recalcCalorieTarget() {
   const cw = currentWeight();
   if (!cw) { toast('先记一条体重'); return; }
   const tdee = calcTDEE(state.profile, cw);
-  const target = recommendedKcal(tdee);
+  const mode = state.goal.mode || 'cut';
+  const target = recommendedKcal(tdee, mode);
   document.getElementById('set-kcal-target').value = target;
   toast(`TDEE ${tdee}，建议摄入 ${target}`);
 }
@@ -1320,7 +1460,9 @@ function recalcMacroTargets() {
   const cw = currentWeight();
   const target = parseInt(document.getElementById('set-kcal-target').value) || state.goal.kcalTarget;
   if (!cw || !target) { toast('需要当前体重和热量目标'); return; }
-  const m = recommendedMacros(cw, target);
+  const mode = state.goal.mode || 'cut';
+  const ppk = state.goal.proteinPerKg || MODE_CONFIG[mode].proteinPerKg;
+  const m = recommendedMacros(cw, target, mode, ppk);
   document.getElementById('set-p-target').value = m.protein;
   document.getElementById('set-c-target').value = m.carbs;
   document.getElementById('set-f-target').value = m.fat;
@@ -1693,7 +1835,7 @@ async function handleSmartInput() {
   try {
     const result = await callOpenAI({
       messages: [
-        { role: 'system', content: `你是减脂饮食助手。分析用户输入意图，返回严格 JSON：
+        { role: 'system', content: `你是饮食助手。分析用户输入意图，返回严格 JSON：
 
 1. 记录食物（用户说吃了什么）→
 {"intent":"food","items":[{"name":"食物名+份量","kcal":number,"protein_g":number,"carbs_g":number,"fat_g":number,"meal":"${mealGuess}"}]}
@@ -1889,7 +2031,8 @@ async function aiRecommend(scenario) {
 
   try {
     const { gap, tags, disliked, frequent } = buildRecommendCtx();
-    const baseCtx = `今日宏量剩余：热量 ${gap.kcal} kcal、蛋白质 ${gap.protein} g、碳水 ${gap.carbs} g、脂肪 ${gap.fat} g。\n饮食限制：${tags}。\n不喜欢：${disliked}。\n常吃食物：${frequent}。`;
+    const recMode = state.goal.mode || 'cut';
+    const baseCtx = `用户模式：${MODE_CONFIG[recMode].label}。\n今日宏量剩余：热量 ${gap.kcal} kcal、蛋白质 ${gap.protein} g、碳水 ${gap.carbs} g、脂肪 ${gap.fat} g。\n饮食限制：${tags}。\n不喜欢：${disliked}。\n常吃食物：${frequent}。`;
 
     // Delivery uses search model (no JSON mode), keep freeform
     if (scenario === 'delivery') {
@@ -1900,9 +2043,9 @@ async function aiRecommend(scenario) {
     // Structured JSON mode for home/convenience/snack
     const jsonSuffix = '\n返回严格 JSON：{"meals":[{"name":"名称","desc":"简要描述","kcal":number,"protein_g":number,"carbs_g":number,"fat_g":number}]}。数字取整数。不要返回 JSON 以外的内容。';
     const configs = {
-      home: '你是减脂营养教练。根据宏量缺口推荐 2-3 个在家做的减脂餐。每项含菜名、食材克重和简单做法。蛋白质缺口大时优先高蛋白。' + jsonSuffix,
-      convenience: '你是减脂营养教练。推荐便利店（全家、7-11、罗森等）能买到的 2-3 个食品组合。每项列具体商品名+克重。蛋白质缺口大时优先高蛋白选项。' + jsonSuffix,
-      snack: '你是减脂营养教练。推荐 3 个加餐零食方案（150-250kcal），优先高蛋白低糖。每项含零食名、分量和适合时段。' + jsonSuffix,
+      home: '你是营养教练。根据用户模式（减脂/增肌/维持）和宏量缺口推荐 2-3 个在家做的餐。每项含菜名、食材克重和简单做法。蛋白质缺口大时优先高蛋白。增肌模式优先足量碳水。' + jsonSuffix,
+      convenience: '你是营养教练。根据用户模式推荐便利店（全家、7-11、罗森等）能买到的 2-3 个食品组合。每项列具体商品名+克重。蛋白质缺口大时优先高蛋白选项。增肌模式可加碳水主食。' + jsonSuffix,
+      snack: '你是营养教练。根据用户模式推荐 3 个加餐零食方案（150-250kcal），优先高蛋白。减脂模式低糖低油，增肌模式可含适量碳水。每项含零食名、分量和适合时段。' + jsonSuffix,
     };
 
     const result = await callOpenAI({
@@ -1953,7 +2096,7 @@ async function _aiRecommendFreeform(scenario, baseCtx, resultEl) {
 
     const result = await callOpenAI({
       messages: [
-        { role: 'system', content: '你是减脂饮食顾问。根据用户位置和宏量缺口，在网上搜索附近真实存在的外卖餐厅，推荐2-3个具体选项。每项：① 餐厅名+菜品名 ② 如何定制（少油少酱）③ 估算营养。蛋白质优先。中文直接给建议。' },
+        { role: 'system', content: '你是饮食顾问。根据用户的目标模式（减脂/增肌/维持）、位置和宏量缺口，在网上搜索附近真实存在的外卖餐厅，推荐2-3个具体选项。每项：① 餐厅名+菜品名 ② 如何定制（减脂少油少酱，增肌可加主食）③ 估算营养。蛋白质优先。中文直接给建议。' },
         { role: 'user', content: userContent },
       ],
       model: 'gpt-4o-search-preview',
@@ -2106,3 +2249,5 @@ window.quickAddFood = quickAddFood;
 window.addRecFood = addRecFood;
 window.aiDiagnosePlateau = aiDiagnosePlateau;
 window.generateWeeklyReport = generateWeeklyReport;
+window.setMode = setMode;
+window.selectOnboardingMode = selectOnboardingMode;
