@@ -1,4 +1,4 @@
-const CACHE = 'fatloss-v6';
+const CACHE = 'fatloss-v7';
 const ASSETS = [
   './',
   './index.html',

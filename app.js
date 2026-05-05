@@ -17,6 +17,7 @@ const defaultState = {
     height: 176,
     activity: 1.725,
     weightUnit: 'kg',
+    homeTimezone: null,
   },
   goal: {
     mode: 'cut',
@@ -42,6 +43,11 @@ const defaultState = {
     disliked: '',
   },
   mealPromptDismissed: null,
+  mealWindows: {
+    breakfast: [360, 570],   // 6:00–9:30
+    lunch: [690, 810],       // 11:30–13:30
+    dinner: [1050, 1170],    // 17:30–19:30
+  },
 };
 
 let state = loadState();
@@ -51,7 +57,7 @@ let state = loadState();
 function loadState() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return structuredClone(defaultState);
+    if (!raw) return ensureDefaults(structuredClone(defaultState));
     const parsed = JSON.parse(raw);
     const merged = Object.assign(structuredClone(defaultState), parsed);
     merged.aiPrefs = Object.assign(structuredClone(defaultState.aiPrefs), parsed.aiPrefs || {});
@@ -59,30 +65,49 @@ function loadState() {
     merged.profile = Object.assign(structuredClone(defaultState.profile), parsed.profile || {});
     if (!MODE_CONFIG[merged.goal.mode]) merged.goal.mode = 'cut';
     if (!merged.goal.proteinPerKg) merged.goal.proteinPerKg = MODE_CONFIG[merged.goal.mode].proteinPerKg;
-    return merged;
+    return ensureDefaults(merged);
   } catch (e) {
     console.error('loadState failed', e);
-    return structuredClone(defaultState);
+    return ensureDefaults(structuredClone(defaultState));
   }
+}
+
+function ensureDefaults(s) {
+  if (!s.profile.homeTimezone) {
+    try {
+      s.profile.homeTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+    } catch { s.profile.homeTimezone = 'UTC'; }
+  }
+  if (!s.mealWindows) s.mealWindows = structuredClone(defaultState.mealWindows);
+  return s;
 }
 
 function saveState() {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   } catch (e) {
-    toast('保存失败：存储空间不足');
-    console.error(e);
+    console.error('saveState failed:', e);
+    if (e.name === 'QuotaExceededError' || e.code === 22 || e.code === 1014) {
+      alert('⚠️ 存储空间已满\n\n本次更改未保存到磁盘（内存里还在）。\n请到「设置 → 导出数据」备份一份，然后删除一些旧照片释放空间，再重试。');
+    } else {
+      toast('保存失败');
+    }
   }
 }
 
 /* ============== Date helpers ============== */
 
+function getHomeTz() {
+  return state?.profile?.homeTimezone
+    || (Intl.DateTimeFormat().resolvedOptions().timeZone)
+    || 'UTC';
+}
+
 function todayISO() {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: getHomeTz(),
+    year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(new Date());
 }
 function fmtDate(iso) {
   if (!iso) return '—';
@@ -599,7 +624,7 @@ function finishOnboarding() {
     return;
   }
 
-  state.profile = { sex, age, height, activity };
+  state.profile = { ...state.profile, sex, age, height, activity };
   state.goal.startWeight = startWeight;
   state.goal.goalWeight = goalWeight;
   state.goal.goalDate = goalDate;
@@ -1346,6 +1371,9 @@ async function deleteBody(date) {
 function addPhoto(ev) {
   const file = ev.target.files[0];
   if (!file) return;
+  const input = ev.target;
+  input.disabled = true;
+  const cleanup = () => { input.disabled = false; input.value = ''; };
   const reader = new FileReader();
   reader.onload = e => {
     resizeImage(e.target.result, 800).then(small => {
@@ -1353,10 +1381,13 @@ function addPhoto(ev) {
       saveState();
       renderBody();
       toast('已保存 ✓');
-    });
+    }).catch(err => {
+      console.error('photo resize failed', err);
+      toast('图片处理失败');
+    }).finally(cleanup);
   };
+  reader.onerror = () => { toast('读取文件失败'); cleanup(); };
   reader.readAsDataURL(file);
-  ev.target.value = '';
 }
 
 function resizeImage(dataUrl, maxSize) {
@@ -1382,6 +1413,8 @@ function resizeImage(dataUrl, maxSize) {
 }
 
 async function deletePhoto(i) {
+  i = +i;
+  if (!Number.isInteger(i) || i < 0 || i >= state.photos.length) return;
   if (!await showCustomModal('删除这张照片？')) return;
   state.photos.splice(i, 1);
   saveState();
@@ -1540,19 +1573,23 @@ function importHealthFile(ev, preparsed) {
 }
 
 function _processHealthImport(parsed) {
+  if (!parsed || typeof parsed !== 'object') { toast('文件格式不识别'); return; }
   const days = parsed.daily || parsed.entries || (Array.isArray(parsed) ? parsed : null);
-  if (!days) { toast('文件格式不识别'); return; }
+  if (!Array.isArray(days)) { toast('文件格式不识别'); return; }
 
   let exAdded = 0;
   let weightAdded = 0;
   let activitySum = 0, activityDays = 0;
+  let skipped = 0;
 
   days.forEach(d => {
-    const date = (d.date || '').slice(0, 10);
-    if (!date) return;
+    if (!d || typeof d !== 'object') { skipped++; return; }
+    const date = (typeof d.date === 'string' ? d.date : '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { skipped++; return; }
 
-    const kcal = d.active_energy_kcal != null ? +d.active_energy_kcal : (+d.kcal || 0);
-    if (kcal > 5) {
+    const kcalRaw = d.active_energy_kcal != null ? +d.active_energy_kcal : +d.kcal;
+    const kcal = Number.isFinite(kcalRaw) ? kcalRaw : 0;
+    if (kcal > 5 && kcal < 10000) {
       state.exercises = state.exercises.filter(e => !(e.source === 'health' && e.date === date));
       state.exercises.push({
         id: Math.random().toString(36).slice(2, 10),
@@ -1568,9 +1605,10 @@ function _processHealthImport(parsed) {
       activityDays++;
     }
 
-    if (d.weight_kg != null && d.weight_kg > 0) {
-      if (!state.weights.find(w => w.date === date)) {
-        state.weights.push({ date, kg: +d.weight_kg });
+    const w = +d.weight_kg;
+    if (Number.isFinite(w) && w > 20 && w < 400) {
+      if (!state.weights.find(x => x.date === date)) {
+        state.weights.push({ date, kg: w });
         weightAdded++;
       }
     }
@@ -1591,8 +1629,8 @@ function _processHealthImport(parsed) {
 
   saveState();
   renderForTab('settings');
-  // Use custom modal-style alert
-  toast(`导入完成：运动 ${exAdded} 条，体重 ${weightAdded} 条，日均活动 ${avgActive.toFixed(0)} kcal`, 4000);
+  const skipMsg = skipped > 0 ? `，跳过 ${skipped} 条无效` : '';
+  toast(`导入完成：运动 ${exAdded} 条，体重 ${weightAdded} 条${skipMsg}，日均活动 ${avgActive.toFixed(0)} kcal`, 4000);
 }
 
 async function importData(ev) {
@@ -1710,6 +1748,19 @@ async function callOpenAI({ messages, json = false, model }) {
   return data.choices?.[0]?.message?.content || null;
 }
 
+// Parse AI text that should be JSON. Strips ```json fences and surrounding noise.
+function parseAiJson(text) {
+  if (typeof text !== 'string' || !text.trim()) throw new Error('empty AI response');
+  let s = text.trim();
+  const fence = s.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+  if (fence) s = fence[1].trim();
+  if (s[0] !== '{' && s[0] !== '[') {
+    const m = s.match(/[\{\[][\s\S]*[\}\]]/);
+    if (m) s = m[0];
+  }
+  return JSON.parse(s);
+}
+
 function voiceFoodInput() {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SpeechRecognition) {
@@ -1740,10 +1791,15 @@ function voiceFoodInput() {
   };
 
   recognition.onresult = async (e) => {
-    const text = e.results[0][0].transcript;
-    document.getElementById('food-name').value = text;
-    toast(`识别到：${text}`, 2000);
-    await aiEstimateFood();
+    try {
+      const text = e.results[0][0].transcript;
+      document.getElementById('food-name').value = text;
+      toast(`识别到：${text}`, 2000);
+      await aiEstimateFood();
+    } catch (err) {
+      console.error('voice handler failed', err);
+      toast('处理失败');
+    }
   };
 
   recognition.onerror = (e) => {
@@ -1779,7 +1835,7 @@ async function aiEstimateFood() {
       json: true,
     });
     if (result) {
-      const p = JSON.parse(result);
+      const p = parseAiJson(result);
       document.getElementById('food-kcal').value = p.kcal;
       document.getElementById('food-protein').value = p.protein_g;
       document.getElementById('food-carbs').value = p.carbs_g;
@@ -1831,7 +1887,7 @@ async function aiPhotoFood() {
         json: true,
       });
       if (result) {
-        const p = JSON.parse(result);
+        const p = parseAiJson(result);
         if (p.name) document.getElementById('food-name').value = p.name;
         document.getElementById('food-kcal').value = p.kcal;
         document.getElementById('food-protein').value = p.protein_g;
@@ -1890,7 +1946,7 @@ async function handleSmartInput() {
     });
 
     if (!result) { toast('AI 无响应'); return; }
-    const parsed = JSON.parse(result);
+    const parsed = parseAiJson(result);
 
     if (parsed.intent === 'food' && parsed.items?.length) {
       const mealLabels = { breakfast: '早餐', lunch: '午餐', dinner: '晚餐', snack: '加餐' };
@@ -1963,10 +2019,16 @@ let aiRecommending = false;
 let _lastRecMeals = [];
 
 function getMealTime() {
-  const t = new Date().getHours() * 60 + new Date().getMinutes();
-  if (t >= 360 && t <= 570)  return 'breakfast';  // 6:00–9:30
-  if (t >= 690 && t <= 810)  return 'lunch';       // 11:30–13:30
-  if (t >= 1050 && t <= 1170) return 'dinner';     // 17:30–19:30
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: getHomeTz(), hour: '2-digit', minute: '2-digit', hour12: false,
+  }).formatToParts(new Date());
+  const hour = (+(parts.find(p => p.type === 'hour')?.value) || 0) % 24;
+  const minute = +(parts.find(p => p.type === 'minute')?.value) || 0;
+  const t = hour * 60 + minute;
+  const w = state.mealWindows || defaultState.mealWindows;
+  if (w.breakfast && t >= w.breakfast[0] && t <= w.breakfast[1]) return 'breakfast';
+  if (w.lunch     && t >= w.lunch[0]     && t <= w.lunch[1])     return 'lunch';
+  if (w.dinner    && t >= w.dinner[0]    && t <= w.dinner[1])    return 'dinner';
   return null;
 }
 
@@ -2094,7 +2156,7 @@ async function aiRecommend(scenario) {
 
     if (result) {
       try {
-        const data = JSON.parse(result);
+        const data = parseAiJson(result);
         if (data.meals?.length) {
           _lastRecMeals = data.meals;
           resultEl.innerHTML = renderRecItems(data.meals, scenario);
