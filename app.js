@@ -21,7 +21,7 @@ const defaultState = {
   },
   goal: {
     mode: 'cut',
-    proteinPerKg: 2.0,
+    proteinPerKg: null,
     startWeight: null,
     goalWeight: null,
     goalDate: null,
@@ -634,9 +634,9 @@ function finishOnboarding() {
     state.weights.push({ date: todayISO(), kg: weight });
   }
 
-  // Calc kcal & macro targets
+  // Calc kcal & macro targets — always use mode default at onboarding
   const tdee = calcTDEE(state.profile, weight);
-  state.goal.proteinPerKg = state.goal.proteinPerKg || MODE_CONFIG[mode].proteinPerKg;
+  state.goal.proteinPerKg = MODE_CONFIG[mode].proteinPerKg;
   state.goal.kcalTarget = recommendedKcal(tdee, mode);
   const macros = recommendedMacros(weight, state.goal.kcalTarget, mode, state.goal.proteinPerKg);
   state.goal.proteinTarget = macros.protein;
@@ -666,6 +666,10 @@ function renderToday() {
     const diff = goal.goalWeight - cw;
     const reached = isBulk ? diff <= 0 : diff >= 0;
     document.getElementById('goal-remaining').textContent = reached ? '🎉' : toDisplay(Math.abs(diff)).toFixed(1);
+    const lblEl = document.getElementById('goal-remaining-label');
+    if (lblEl) lblEl.textContent = reached
+      ? '已达成'
+      : (isBulk ? `${u} 还需增` : mode === 'maintain' ? `${u} 距目标` : `${u} 还需减`);
     document.getElementById('goal-start').textContent = goal.startWeight ? `${toDisplay(goal.startWeight).toFixed(1)} ${u}` : '—';
     document.getElementById('goal-target').textContent = `${toDisplay(goal.goalWeight).toFixed(1)} ${u}`;
     document.getElementById('goal-date').textContent = goal.goalDate ? fmtFullDate(goal.goalDate).replace(/周./, '') : '—';
