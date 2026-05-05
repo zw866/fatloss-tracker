@@ -16,6 +16,7 @@ const defaultState = {
     age: 25,
     height: 176,
     activity: 1.725,
+    weightUnit: 'kg',
   },
   goal: {
     mode: 'cut',
@@ -98,6 +99,18 @@ function daysBetween(a, b) {
   const ms = new Date(b) - new Date(a);
   return Math.round(ms / 86400000);
 }
+
+/* ============== Unit helpers ============== */
+
+function weightUnit() { return state.profile.weightUnit || 'kg'; }
+function toDisplay(kg) {
+  if (kg == null) return null;
+  return weightUnit() === 'lbs' ? +(kg * 2.20462).toFixed(1) : +kg.toFixed(1);
+}
+function toKg(val) {
+  return weightUnit() === 'lbs' ? val / 2.20462 : val;
+}
+function wUnit() { return weightUnit(); }
 
 /* ============== Calculations ============== */
 
@@ -621,14 +634,15 @@ function renderToday() {
   const goal = state.goal;
 
   // Goal card
+  const u = wUnit();
   if (cw != null && goal.goalWeight != null) {
     const mode = goal.mode || 'cut';
     const isBulk = mode === 'bulk';
     const diff = goal.goalWeight - cw;
     const reached = isBulk ? diff <= 0 : diff >= 0;
-    document.getElementById('goal-remaining').textContent = reached ? '🎉' : Math.abs(diff).toFixed(1);
-    document.getElementById('goal-start').textContent = goal.startWeight ? `${goal.startWeight} kg` : '—';
-    document.getElementById('goal-target').textContent = `${goal.goalWeight} kg`;
+    document.getElementById('goal-remaining').textContent = reached ? '🎉' : toDisplay(Math.abs(diff)).toFixed(1);
+    document.getElementById('goal-start').textContent = goal.startWeight ? `${toDisplay(goal.startWeight).toFixed(1)} ${u}` : '—';
+    document.getElementById('goal-target').textContent = `${toDisplay(goal.goalWeight).toFixed(1)} ${u}`;
     document.getElementById('goal-date').textContent = goal.goalDate ? fmtFullDate(goal.goalDate).replace(/周./, '') : '—';
 
     if (goal.startWeight && goal.startWeight !== goal.goalWeight) {
@@ -637,7 +651,7 @@ function renderToday() {
       const pct = Math.max(0, Math.min(100, (done / total) * 100));
       document.getElementById('goal-progress-fill').style.width = pct + '%';
       const sign = isBulk ? '+' : '-';
-      document.getElementById('goal-progress-text').textContent = `已完成 ${pct.toFixed(0)}% (${sign}${Math.abs(done).toFixed(1)} kg)`;
+      document.getElementById('goal-progress-text').textContent = `已完成 ${pct.toFixed(0)}% (${sign}${toDisplay(Math.abs(done)).toFixed(1)} ${u})`;
     }
 
     if (goal.goalDate) {
@@ -657,10 +671,10 @@ function renderToday() {
 
   // Stat cards
   const yest = yesterdaysWeight();
-  document.getElementById('stat-weight').textContent = cw != null ? cw.toFixed(1) : '—';
+  document.getElementById('stat-weight').textContent = cw != null ? `${toDisplay(cw).toFixed(1)} ${u}` : '—';
   if (cw != null && yest != null) {
-    const d = (cw - yest).toFixed(1);
-    document.getElementById('stat-weight-delta').textContent = `${d > 0 ? '+' : ''}${d} kg vs 上次`;
+    const d = toDisplay(cw - yest);
+    document.getElementById('stat-weight-delta').textContent = `${d > 0 ? '+' : ''}${d.toFixed(1)} ${u} vs 上次`;
   } else {
     document.getElementById('stat-weight-delta').textContent = '点击记录';
   }
@@ -780,6 +794,12 @@ function generateTip(cw, fSum, exKcal) {
 /* ============== WEIGHT tab ============== */
 
 function renderWeight() {
+  // unit toggle chips
+  const u = wUnit();
+  document.querySelectorAll('.unit-chip').forEach(c => c.classList.toggle('active', c.dataset.unit === u));
+  const input = document.getElementById('weight-input');
+  if (input) { input.placeholder = u; input.step = u === 'lbs' ? '0.1' : '0.1'; }
+
   // history list
   const list = document.getElementById('weight-history');
   if (!list) return;
@@ -788,13 +808,15 @@ function renderWeight() {
     ? '<div class="muted small">暂无记录</div>'
     : sorted.slice(0, 60).map((w, i) => {
         const prev = sorted[i + 1];
-        const delta = prev ? (w.kg - prev.kg).toFixed(1) : null;
+        const deltaKg = prev ? w.kg - prev.kg : null;
+        const deltaDisp = deltaKg != null ? toDisplay(Math.abs(deltaKg)) * (deltaKg >= 0 ? 1 : -1) : null;
+        const disp = toDisplay(w.kg);
         return `<div class="list-item">
           <div class="left">
             <div class="name">${fmtFullDate(w.date)}</div>
-            ${delta != null ? `<div class="sub">${delta > 0 ? '+' : ''}${delta} kg</div>` : ''}
+            ${deltaDisp != null ? `<div class="sub">${deltaDisp > 0 ? '+' : ''}${deltaDisp.toFixed(1)} ${u}</div>` : ''}
           </div>
-          <div class="right">${w.kg.toFixed(1)} kg</div>
+          <div class="right">${disp.toFixed(1)} ${u}</div>
           <button class="delete-btn" onclick="deleteWeight('${w.date}')">×</button>
         </div>`;
       }).join('');
@@ -803,9 +825,19 @@ function renderWeight() {
   drawWeightChart();
 }
 
+function setWeightUnit(unit) {
+  state.profile.weightUnit = unit;
+  saveState();
+  renderWeight();
+}
+
 function addWeight() {
-  const v = parseFloat(document.getElementById('weight-input').value);
-  if (!v || v < 30 || v > 300) { toast('请输入合理体重'); return; }
+  const raw = parseFloat(document.getElementById('weight-input').value);
+  if (!raw) { toast('请输入体重'); return; }
+  const v = toKg(raw);
+  const lo = wUnit() === 'lbs' ? 66 : 30;
+  const hi = wUnit() === 'lbs' ? 660 : 300;
+  if (raw < lo || raw > hi) { toast('请输入合理体重'); return; }
   const date = todayISO();
   const idx = state.weights.findIndex(w => w.date === date);
   if (idx >= 0) state.weights[idx].kg = v;
@@ -888,7 +920,7 @@ function drawWeightChart() {
     const v = yMin + (yRange * i / yTicks);
     const y = pad.t + (1 - i / yTicks) * innerH;
     yLabels.push(`<line x1="${pad.l}" y1="${y}" x2="${W - pad.r}" y2="${y}" stroke="#f1f5f9" stroke-width="1"/>
-      <text x="${pad.l - 6}" y="${y + 3}" font-size="10" fill="#9ca3af" text-anchor="end">${v.toFixed(1)}</text>`);
+      <text x="${pad.l - 6}" y="${y + 3}" font-size="10" fill="#9ca3af" text-anchor="end">${toDisplay(v).toFixed(1)}</text>`);
   }
 
   // Goal line
@@ -896,7 +928,7 @@ function drawWeightChart() {
   if (state.goal.goalWeight && state.goal.goalWeight >= yMin && state.goal.goalWeight <= yMax) {
     const gy = pad.t + (1 - (state.goal.goalWeight - yMin) / yRange) * innerH;
     goalLine = `<line x1="${pad.l}" y1="${gy}" x2="${W - pad.r}" y2="${gy}" stroke="#10b981" stroke-width="1" stroke-dasharray="4 4" opacity="0.6"/>
-      <text x="${W - pad.r}" y="${gy - 4}" font-size="10" fill="#10b981" text-anchor="end">目标 ${state.goal.goalWeight}</text>`;
+      <text x="${W - pad.r}" y="${gy - 4}" font-size="10" fill="#10b981" text-anchor="end">目标 ${toDisplay(state.goal.goalWeight).toFixed(1)}</text>`;
   }
 
   const linePath = points.map((p, i) => (i === 0 ? 'M' : 'L') + p.x.toFixed(1) + ',' + p.y.toFixed(1)).join(' ');
@@ -938,11 +970,13 @@ function drawWeightChart() {
 
   const first = data[0];
   const last = data[data.length - 1];
-  const change = (last.kg - first.kg).toFixed(1);
-  meta.innerHTML = `<span>${data.length} 条记录</span><span>${change > 0 ? '+' : ''}${change} kg · ${data.length > 1 ? ((last.kg - first.kg) / (daysBetween(first.date, last.date) / 7 || 1)).toFixed(2) + ' kg/周' : ''}</span>`;
+  const changeKg = last.kg - first.kg;
+  const changeDisp = toDisplay(Math.abs(changeKg)) * (changeKg >= 0 ? 1 : -1);
+  const perWeekDisp = data.length > 1 ? toDisplay(changeKg / (daysBetween(first.date, last.date) / 7 || 1)).toFixed(2) : null;
+  meta.innerHTML = `<span>${data.length} 条记录</span><span>${changeDisp > 0 ? '+' : ''}${changeDisp.toFixed(1)} ${wUnit()}${perWeekDisp ? ` · ${perWeekDisp} ${wUnit()}/周` : ''}</span>`;
 
   // Chart touch interaction
-  setupChartInteraction(container, points, W, p => `${fmtFullDate(p.date)}  ${p.kg} kg`);
+  setupChartInteraction(container, points, W, p => `${fmtFullDate(p.date)}  ${toDisplay(p.kg).toFixed(1)} ${wUnit()}`);
 }
 
 /* ============== FOOD tab ============== */
@@ -1362,8 +1396,8 @@ function renderSettings() {
   document.getElementById('set-age').value = p.age || '';
   document.getElementById('set-height').value = p.height || '';
   document.getElementById('set-activity').value = p.activity;
-  document.getElementById('set-start').value = g.startWeight || '';
-  document.getElementById('set-goal').value = g.goalWeight || '';
+  document.getElementById('set-start').value = g.startWeight ? toDisplay(g.startWeight) : '';
+  document.getElementById('set-goal').value = g.goalWeight ? toDisplay(g.goalWeight) : '';
   document.getElementById('set-goal-date').value = g.goalDate || '';
   document.getElementById('set-kcal-target').value = g.kcalTarget || '';
   document.getElementById('set-p-target').value = g.proteinTarget || '';
@@ -1394,8 +1428,10 @@ function saveSettings() {
   state.profile.age = parseInt(document.getElementById('set-age').value) || state.profile.age;
   state.profile.height = parseFloat(document.getElementById('set-height').value) || state.profile.height;
   state.profile.activity = parseFloat(document.getElementById('set-activity').value) || state.profile.activity;
-  state.goal.startWeight = parseFloat(document.getElementById('set-start').value) || state.goal.startWeight;
-  state.goal.goalWeight = parseFloat(document.getElementById('set-goal').value) || state.goal.goalWeight;
+  const rawStart = parseFloat(document.getElementById('set-start').value);
+  if (rawStart) state.goal.startWeight = toKg(rawStart);
+  const rawGoal = parseFloat(document.getElementById('set-goal').value);
+  if (rawGoal) state.goal.goalWeight = toKg(rawGoal);
   state.goal.goalDate = document.getElementById('set-goal-date').value || state.goal.goalDate;
   state.goal.kcalTarget = parseInt(document.getElementById('set-kcal-target').value) || state.goal.kcalTarget;
   state.goal.proteinTarget = parseInt(document.getElementById('set-p-target').value) || state.goal.proteinTarget;
@@ -2250,4 +2286,5 @@ window.addRecFood = addRecFood;
 window.aiDiagnosePlateau = aiDiagnosePlateau;
 window.generateWeeklyReport = generateWeeklyReport;
 window.setMode = setMode;
+window.setWeightUnit = setWeightUnit;
 window.selectOnboardingMode = selectOnboardingMode;

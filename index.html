@@ -249,7 +249,13 @@
     <!-- Weight sub-section -->
     <div class="records-sub" data-sub="weight">
       <div class="card">
-        <div class="card-title">添加今日体重</div>
+        <div class="card-title-row">
+          <span class="card-title">添加今日体重</span>
+          <div class="unit-toggle">
+            <button class="unit-chip" data-unit="kg" onclick="setWeightUnit('kg')">kg</button>
+            <button class="unit-chip" data-unit="lbs" onclick="setWeightUnit('lbs')">lbs</button>
+          </div>
+        </div>
         <div class="inline-form">
           <input type="number" id="weight-input" inputmode="decimal" step="0.1" placeholder="kg">
           <button class="btn-primary" onclick="addWeight()">记录</button>
