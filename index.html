@@ -533,10 +533,8 @@
         <input type="password" id="set-api-key" placeholder="sk-..." autocomplete="off">
       </label>
       <label class="form-label" style="margin-top:10px">模型
-        <select id="set-api-model">
-          <option value="gpt-4o-mini">gpt-4o-mini（推荐：便宜+视觉）</option>
-          <option value="gpt-4o">gpt-4o（更准但贵 10 倍）</option>
-        </select>
+        <input type="text" id="set-api-model" placeholder="gpt-4o-mini" autocomplete="off" spellcheck="false">
+        <div class="muted small" style="margin-top:4px">常用：gpt-4o-mini · gpt-4o · gpt-4.5 · gpt-5.5（填 API 官方 model ID）</div>
       </label>
       <button class="btn-primary block" onclick="saveApiKey()">保存 API 设置</button>
       <p class="muted small" style="margin-top:8px">Key 只存在你的浏览器本地，不会发到任何服务器（除了 OpenAI）。</p>
