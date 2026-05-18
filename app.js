@@ -710,9 +710,17 @@ function renderToday() {
 
   const fSum = sumFoods(todaysFoods());
   document.getElementById('stat-calories').textContent = Math.round(fSum.kcal);
-  document.getElementById('stat-calories-target').textContent = `目标 ${goal.kcalTarget || '—'}`;
-
   const exKcal = sumExercises(todaysExercises());
+  if (goal.kcalTarget) {
+    const adjustedTarget = goal.kcalTarget + exKcal;
+    const targetText = exKcal > 0
+      ? `目标 ${adjustedTarget} (+${exKcal}运动)`
+      : `目标 ${goal.kcalTarget}`;
+    document.getElementById('stat-calories-target').textContent = targetText;
+  } else {
+    document.getElementById('stat-calories-target').textContent = '目标 —';
+  }
+
   document.getElementById('stat-exercise').textContent = exKcal;
   document.getElementById('stat-exercise-meta').textContent = `${todaysExercises().length} 项`;
 
@@ -735,7 +743,8 @@ function renderToday() {
         : mode === 'maintain'
         ? (Math.abs(balance) < 100 ? '平衡' : balance > 0 ? '缺口' : '盈余')
         : (balance >= 0 ? '缺口' : '盈余');
-      document.getElementById('stat-deficit-meta').textContent = `TDEE ${tdee} · ${tag}`;
+      const exNote = exKcal > 0 ? ` · 运动+${exKcal}` : '';
+      document.getElementById('stat-deficit-meta').textContent = `TDEE ${tdee}${exNote} · ${tag}`;
     }
   } else {
     document.getElementById('stat-deficit').textContent = '—';
